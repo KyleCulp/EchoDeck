@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest an effect, profile capability, UX, or integration
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: The use case or pain point, not just the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: checkboxes
+    id: area
+    attributes:
+      label: Area
+      options:
+        - label: Effects / NVIDIA pipeline
+        - label: Virtual mic / routing
+        - label: Device & profile switching / hotkeys
+        - label: GUI / tray / test panel
+        - label: Packaging / install / autostart

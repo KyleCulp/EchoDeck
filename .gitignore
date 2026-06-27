@@ -1,0 +1,53 @@
+# ── .NET build output ──────────────────────────────────────────────
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+publish/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# ── Visual Studio / Rider / VS Code ────────────────────────────────
+.vs/
+.vscode/
+.idea/
+*.DotSettings.user
+
+# ── NuGet ──────────────────────────────────────────────────────────
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+
+# ── EchoDeck runtime / local ───────────────────────────────────────
+bridge.log
+*.log
+
+# Claude Code local (personal) settings — keep shared settings.json if any
+.claude/settings.local.json
+
+# ── DO NOT COMMIT proprietary / large binaries ─────────────────────
+# NVIDIA Audio Effects SDK is installed by the user, never redistributed:
+NVAudioEffects.dll
+*.trtpkg
+cublas64_*.dll
+cublasLt64_*.dll
+cufft64_*.dll
+nvrtc64_*.dll
+nvinfer_*.dll
+libcrypto-*.dll
+
+# Bundled virtual audio driver binaries are pulled at release time, not committed:
+drivers/**/*.sys
+drivers/**/*.cat
+
+# ── OS cruft ───────────────────────────────────────────────────────
+Thumbs.db
+desktop.ini
+.DS_Store

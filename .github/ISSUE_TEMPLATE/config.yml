@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions & ideas (Discussions)
+    url: https://github.com/OWNER/echodeck/discussions
+    about: Ask questions or discuss ideas before opening an issue.
+  - name: 🔒 Report a security vulnerability
+    url: https://github.com/OWNER/echodeck/security/advisories/new
+    about: Please report security issues privately, not as a public issue.

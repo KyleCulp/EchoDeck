@@ -1,0 +1,34 @@
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write   # needed to create the GitHub Release
+
+jobs:
+  release:
+    name: Build & publish release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # TODO (roadmap Phase 1): point --project at EchoDeck.App once the solution is split.
+      - name: Publish (win-x64, framework-dependent)
+        run: dotnet publish -c Release -r win-x64 --self-contained false -o publish
+
+      - name: Package
+        run: Compress-Archive -Path publish/* -DestinationPath "EchoDeck-${{ github.ref_name }}-win-x64.zip"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: EchoDeck-*.zip
+          generate_release_notes: true
+          draft: true   # review the auto-notes + artifacts before publishing

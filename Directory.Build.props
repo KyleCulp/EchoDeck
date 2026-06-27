@@ -1,0 +1,20 @@
+<Project>
+  <!-- Shared metadata + defaults for all EchoDeck projects. -->
+  <PropertyGroup>
+    <Product>EchoDeck</Product>
+    <Authors>Kyle Culp</Authors>
+    <Company>EchoDeck</Company>
+    <Copyright>Copyright (c) 2026 Kyle Culp</Copyright>
+    <Version>0.1.0</Version>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/OWNER/echodeck</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <Deterministic>true</Deterministic>
+    <!-- Windows-only tool; suppress the cross-platform-portability nag. -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+</Project>
