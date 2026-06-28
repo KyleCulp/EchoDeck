@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
+using EchoDeck.App.VirtualMic;
 using EchoDeck.Engine;
 using EchoDeck.Engine.Interop;
 using NAudio.CoreAudioApi;
@@ -65,6 +67,8 @@ public sealed class MainForm : Form
     private readonly Label _status = new() { Text = "Stopped", AutoSize = true };
     private readonly Label _sdkLabel = new() { AutoSize = true };
     private readonly Label _cableLabel = new() { AutoSize = true };
+    private readonly Button _vmicButton = new() { AutoSize = true, Visible = false, Text = "Install virtual mic driver…" };
+    private VirtualMicManager _vmic = new(new List<DeviceInfo>(), new List<DeviceInfo>());
     private readonly ToolTip _tips = new();
     private readonly NotifyIcon _tray;
 
@@ -102,6 +106,10 @@ public sealed class MainForm : Form
         var banner = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, WrapContents = false, BackColor = Bg, Margin = new Padding(0) };
         banner.Controls.Add(_sdkLabel);
         banner.Controls.Add(_cableLabel);
+        StyleFlat(_vmicButton, Panel, TextColor);
+        _vmicButton.Padding = new Padding(12, 6, 12, 6);
+        _vmicButton.Margin = new Padding(0, 8, 0, 2);
+        banner.Controls.Add(_vmicButton);
         root.Controls.Add(banner);
 
         // DEVICES
@@ -316,6 +324,7 @@ public sealed class MainForm : Form
     private void WireEvents()
     {
         _refresh.Click += (_, _) => Reload();
+        _vmicButton.Click += (_, _) => OnInstallVirtualMic();
         _start.Click += (_, _) => StartEngine();
         _stop.Click += (_, _) => _engine.Stop();
 
@@ -393,13 +402,14 @@ public sealed class MainForm : Form
 
     private void ApplyDeviceLists()
     {
+        _vmic = new VirtualMicManager(_allInputs, _allOutputs);
         Fill(_mic, VisibleDevices(_allInputs), _config.InputDeviceId, "Shure");
         Fill(_reference, VisibleDevices(_allOutputs), _config.FarEndDeviceId, "Modi");
-        Fill(_output, VisibleDevices(_allOutputs), _config.OutputDeviceId, "CABLE In");
+        Fill(_output, VisibleDevices(_allOutputs), _config.OutputDeviceId ?? _vmic.Active?.RenderEndpointId, "CABLE In");
         _engine.InputDeviceId = SelId(_mic);
         _engine.FarEndDeviceId = SelId(_reference);
         _engine.OutputDeviceId = SelId(_output);
-        UpdateCableStatus();
+        UpdateVirtualMicStatus();
     }
 
     private List<DeviceInfo> VisibleDevices(List<DeviceInfo> all) => all.Where(d =>
@@ -425,17 +435,64 @@ public sealed class MainForm : Form
         }
     }
 
-    private void UpdateCableStatus()
+    private void UpdateVirtualMicStatus()
     {
-        bool cable = _allOutputs.Any(d =>
-            d.FriendlyName.Contains("CABLE", StringComparison.OrdinalIgnoreCase) ||
-            d.FriendlyName.Contains("Virtual", StringComparison.OrdinalIgnoreCase));
-        _cableLabel.Visible = !cable;
-        if (!cable)
+        VirtualMicInfo? active = _vmic.Active;
+        if (active != null)
+        {
+            _cableLabel.ForeColor = Ok;
+            _cableLabel.Text = $"✓  Virtual mic: {active.Name} — set “{active.CaptureEndpointName}” as your mic in other apps.";
+            _vmicButton.Visible = false;
+        }
+        else
         {
             _cableLabel.ForeColor = Warn;
-            _cableLabel.Text = "⚠  No virtual audio cable detected — install VB-Cable (or the virtual mic driver) so apps can pick EchoDeck as their mic.";
+            _cableLabel.Text = "⚠  No virtual mic installed — other apps have nothing to capture EchoDeck's output from.";
+            _vmicButton.Visible = true;
         }
+    }
+
+    private async void OnInstallVirtualMic()
+    {
+        _vmicButton.Enabled = false;
+        try
+        {
+            if (!VirtualMicManager.BundledDriverPresent())
+            {
+                OpenUrl(VirtualMicManager.VadReleases);
+                _status.Text = "Opened the Virtual Audio Driver downloads — install it, then click Refresh.";
+                _status.ForeColor = SubText;
+                return;
+            }
+
+            _status.Text = "Installing the virtual mic driver — accept the UAC prompt…";
+            _status.ForeColor = SubText;
+            string? result = await VirtualMicManager.InstallVirtualAudioDriverAsync();
+            if (result == null)
+            {
+                _status.Text = "Virtual mic driver installed.";
+                _status.ForeColor = Ok;
+                Reload();
+            }
+            else if (result is "no-package" or "no-installer")
+            {
+                OpenUrl(VirtualMicManager.VadReleases);
+                _status.Text = "No bundled installer found — opened the download page.";
+                _status.ForeColor = SubText;
+            }
+            else
+            {
+                _status.Text = result;
+                _status.ForeColor = Error;
+            }
+        }
+        finally { _vmicButton.Enabled = true; }
+    }
+
+    private static void OpenUrl(string url)
+    {
+        try { Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true }); }
+        catch { /* no browser */ }
     }
 
     private void Gate(ToggleSwitch sw, bool available, string what)

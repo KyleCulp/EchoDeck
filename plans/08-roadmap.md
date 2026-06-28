@@ -3,7 +3,7 @@
 Phased implementation order. Each phase is independently shippable/testable. **Phase 2 alone fixes the "major delay"** and should be validated before going further. Update the checkboxes and the status line as you go so the next session knows where things stand.
 
 ## Current status
-> **Phases 1–4 + most of Phase 6 implemented on branch `feat/engine-phase1-2` — `dotnet build -c Release` is green.** `EchoDeck.sln` = `EchoDeck.Engine` + `EchoDeck.App` (dark, DPI-safe, roomy WinForms tray UI). Working: device pickers showing **all device states** (active/disabled/unplugged), **AEC + Noise + Room Echo live toggles** (gated), **SDK + virtual-mic preflight**, **persisted settings** (`%APPDATA%\EchoDeck\config.json`), fat VU meters, and a **Broadcast-style test panel** (Record → play Input vs Output). **Pending: run on the rig to confirm parity / effects / latency.** The window is now **resizable + scrollable** with **pill toggles**, async device load, and a **latency readout**. Remaining: hotkeys + profiles (Phase 7), virtual-mic auto-install (Phase 8), Studio Voice + intensity sliders, packaging.
+> **Phases 1–4 + most of Phase 6 implemented on branch `feat/engine-phase1-2` — `dotnet build -c Release` is green.** `EchoDeck.sln` = `EchoDeck.Engine` + `EchoDeck.App` (dark, DPI-safe, roomy WinForms tray UI). Working: device pickers showing **all device states** (active/disabled/unplugged), **AEC + Noise + Room Echo live toggles** (gated), **SDK + virtual-mic preflight**, **persisted settings** (`%APPDATA%\EchoDeck\config.json`), fat VU meters, and a **Broadcast-style test panel** (Record → play Input vs Output). **Pending: run on the rig to confirm parity / effects / latency.** The window is now **resizable + scrollable** with **pill toggles**, async device load, and a **latency readout**. **Phase 8 in progress:** virtual-mic detection (Virtual-Audio-Driver + VB-Cable) + elevated install flow + UI are in; still needs the signed driver binary dropped into `drivers/` and an on-machine install test. Remaining: hotkeys + profiles (Phase 7), Studio Voice + intensity sliders, packaging.
 
 Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
@@ -66,10 +66,11 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - **Exit check:** hotkey switches the system default device (visible in Sound settings); app autostarts to tray.
 
 ### Phase 8 — Virtual mic swap (#1 RISK) — see [`04-virtual-mic.md`](04-virtual-mic.md)
-- [ ] `IVirtualMicProvider` seam; `VbCableProvider` (fallback) + `VirtualAudioDriverProvider` (default)
-- [ ] **Validate the signed Virtual-Audio-Driver installs WITHOUT test-signing on this Win11 box** ← go/no-go gate
-- [ ] Elevated install/enable automation (project tooling or `pnputil`+`devgen`/`devcon`)
-- [ ] Route engine output to the virtual mic; verify in apps
+- [x] `VirtualMicManager` + `VirtualMicInfo` — detects Virtual-Audio-Driver **and** VB-Cable from the device snapshot; `Active` picks the best
+- [x] Elevated install plumbing (`InstallVirtualAudioDriverAsync` runs the bundled `.bat`/`.exe`/`.inf` via `runas`) + `drivers/` drop-in convention
+- [x] UI: virtual-mic status line + "Install virtual mic driver…" button (installs bundled, else opens the releases page); output endpoint auto-picks the active provider
+- [ ] **Drop in the signed driver package + validate it installs WITHOUT test-signing on this Win11 box** ← go/no-go gate (needs the real binary + on-machine test)
+- [ ] Once validated, route/verify in apps and make VB-Cable optional
 - **Exit check:** apps capture processed audio from the virtual mic; VB-Cable no longer required (fallback still selectable).
 
 ### Phase 9 — Studio Voice — see [`03`](03-nvidia-effects.md) / [`07`](07-build-deploy.md)

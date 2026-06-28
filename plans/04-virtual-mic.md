@@ -47,5 +47,11 @@ Detect-first: only install if `IsInstalled` is false. Never reinstall on every l
 - **Silent install of a root-enumerated devnode** is the fiddly part — budget time to get `pnputil`+`devgen`/`devcon` (or the project installer) working unattended + elevated.
 - **Endpoint naming / multiple instances:** the driver may expose a single fixed-name pair; confirm naming so the GUI instructions are accurate.
 
+## Implementation status (current)
+- ✅ `EchoDeck.App/VirtualMic/VirtualMicManager.cs` — detects **Virtual-Audio-Driver** and **VB-Cable** from the device snapshot; `Active` picks the best; exposes `RenderEndpointId` (engine output) + `CaptureEndpointName` (what apps select).
+- ✅ Elevated install: `InstallVirtualAudioDriverAsync()` runs a bundled `.bat`/`.exe`/`.inf` from `drivers/VirtualAudioDriver/` via `runas`; falls back to opening the releases page.
+- ✅ UI: virtual-mic status line + "Install virtual mic driver…" button; output device auto-selects the active provider's endpoint.
+- ⏳ **Pending:** drop the *signed* driver package into `drivers/` (see [`../drivers/README.md`](../drivers/README.md)) and validate it installs without test-signing on the target machine. The full `IVirtualMicProvider`-style class hierarchy was collapsed into the single `VirtualMicManager` for now (revisit if a third provider is added).
+
 ## Roadmap placement
 Implemented **last** (roadmap Phase 8), *after* the engine + effects + GUI work on the existing VB-Cable so the high-value latency/effects wins land with zero driver risk. Switching the default provider from VB-Cable → Virtual-Audio-Driver is then a contained change behind `IVirtualMicProvider`. See [`08-roadmap.md`](08-roadmap.md).
