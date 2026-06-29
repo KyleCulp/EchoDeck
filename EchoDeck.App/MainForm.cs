@@ -85,9 +85,9 @@ public sealed class MainForm : Form
         Font = new Font("Segoe UI", 11f);
 
         int longest = TextRenderer.MeasureText("AEC reference — the speaker whose echo to cancel", Font).Width;
-        MinimumSize = new Size(Math.Max(560, longest + 130), 480);
+        MinimumSize = new Size(Math.Max(900, longest * 2 + 140), 460);
         int screenH = Screen.PrimaryScreen?.WorkingArea.Height ?? 1000;
-        ClientSize = new Size(Math.Max(860, longest + 180), Math.Min(1000, screenH - 90));
+        ClientSize = new Size(Math.Max(1080, longest * 2 + 180), Math.Min(1000, screenH - 90));
 
         var host = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Bg };
         var root = new TableLayoutPanel
@@ -101,7 +101,7 @@ public sealed class MainForm : Form
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
 
-        // STATUS
+        // STATUS — spans the full width across the top
         root.Controls.Add(SectionHeader("STATUS"));
         var banner = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, WrapContents = false, BackColor = Bg, Margin = new Padding(0) };
         banner.Controls.Add(_sdkLabel);
@@ -112,15 +112,15 @@ public sealed class MainForm : Form
         banner.Controls.Add(_vmicButton);
         root.Controls.Add(banner);
 
-        // DEVICES
-        root.Controls.Add(SectionHeader("DEVICES"));
-        root.Controls.Add(FieldLabel("Microphone"));
-        root.Controls.Add(FullWidth(_mic));
-        root.Controls.Add(FieldLabel("AEC reference — the speaker whose echo to cancel"));
-        root.Controls.Add(FullWidth(_reference));
-        root.Controls.Add(FieldLabel("Output — the virtual mic / cable your apps will listen to"));
-        root.Controls.Add(FullWidth(_output));
-
+        // ── two columns: devices+effects | levels+test ──────────────────────────
+        var left = NewColumn();
+        left.Controls.Add(SectionHeader("DEVICES"));
+        left.Controls.Add(FieldLabel("Microphone"));
+        left.Controls.Add(FullWidth(_mic));
+        left.Controls.Add(FieldLabel("AEC reference — the speaker whose echo to cancel"));
+        left.Controls.Add(FullWidth(_reference));
+        left.Controls.Add(FieldLabel("Output — the virtual mic / cable your apps will listen to"));
+        left.Controls.Add(FullWidth(_output));
         StyleFlat(_refresh, Panel, SubText);
         _refresh.Padding = new Padding(14, 8, 14, 8);
         _showDisabled.ForeColor = SubText; _showDisabled.Margin = new Padding(18, 6, 0, 0);
@@ -129,34 +129,40 @@ public sealed class MainForm : Form
         devRow.Controls.Add(_refresh);
         devRow.Controls.Add(_showDisabled);
         devRow.Controls.Add(_showDisconnected);
-        root.Controls.Add(devRow);
+        left.Controls.Add(devRow);
+        left.Controls.Add(SectionHeader("EFFECTS"));
+        left.Controls.Add(_aec);
+        left.Controls.Add(_noise);
+        left.Controls.Add(_echo);
 
-        // EFFECTS
-        root.Controls.Add(SectionHeader("EFFECTS"));
-        root.Controls.Add(_aec);
-        root.Controls.Add(_noise);
-        root.Controls.Add(_echo);
-
-        // LEVELS
-        root.Controls.Add(SectionHeader("LEVELS"));
-        root.Controls.Add(MeterRow("Input", _inLevel));
-        root.Controls.Add(MeterRow("Output", _outLevel));
-        root.Controls.Add(_latency);
-
-        // TEST
-        root.Controls.Add(SectionHeader("TEST MICROPHONE EFFECTS"));
-        root.Controls.Add(FieldLabel("Record a sample while running, then play Input vs Output to compare."));
+        var right = NewColumn();
+        right.Controls.Add(SectionHeader("LEVELS"));
+        right.Controls.Add(MeterRow("Input", _inLevel));
+        right.Controls.Add(MeterRow("Output", _outLevel));
+        right.Controls.Add(_latency);
+        right.Controls.Add(SectionHeader("TEST MICROPHONE EFFECTS"));
+        right.Controls.Add(FieldLabel("Record a sample while running, then play Input vs Output to compare."));
         StyleFlat(_record, Panel, Error);
         _record.Padding = new Padding(18, 10, 18, 10);
         _record.Margin = new Padding(0, 8, 0, 0);
-        root.Controls.Add(_record);
-        root.Controls.Add(BuildWaves());
+        right.Controls.Add(_record);
+        right.Controls.Add(BuildWaves());
         StyleFlat(_save, Bg, SubText);
         _save.FlatAppearance.BorderColor = Bg;
         _save.Margin = new Padding(0, 10, 0, 0);
-        root.Controls.Add(_save);
+        right.Controls.Add(_save);
 
-        // CONTROLS
+        var body = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 2, RowCount = 1, BackColor = Bg, Margin = new Padding(0, 4, 0, 0) };
+        body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52f));
+        body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48f));
+        body.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        left.Margin = new Padding(0, 0, 20, 0);
+        right.Margin = new Padding(20, 0, 0, 0);
+        body.Controls.Add(left, 0, 0);
+        body.Controls.Add(right, 1, 0);
+        root.Controls.Add(body);
+
+        // CONTROLS — full width across the bottom
         root.Controls.Add(ButtonRow());
         _status.ForeColor = SubText;
         _status.Margin = new Padding(0, 16, 0, 0);
@@ -228,9 +234,16 @@ public sealed class MainForm : Form
         return cb;
     }
 
+    private static TableLayoutPanel NewColumn()
+    {
+        var t = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1, BackColor = Bg, Margin = new Padding(0) };
+        t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        return t;
+    }
+
     private TableLayoutPanel MeterRow(string label, LevelMeter meter)
     {
-        var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Height = 34, Margin = new Padding(0, 8, 0, 8), BackColor = Bg };
+        var t = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 2, RowCount = 1, Height = 34, Margin = new Padding(0, 8, 0, 8), BackColor = Bg };
         t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         t.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
@@ -244,7 +257,7 @@ public sealed class MainForm : Form
 
     private TableLayoutPanel BuildWaves()
     {
-        var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 2, Margin = new Padding(0, 10, 0, 0), BackColor = Bg };
+        var t = new TableLayoutPanel { Dock = DockStyle.Top, Height = 156, ColumnCount = 3, RowCount = 2, Margin = new Padding(0, 10, 0, 0), BackColor = Bg };
         t.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 132));
         t.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 52));
         t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
