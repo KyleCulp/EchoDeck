@@ -9,10 +9,10 @@ using NAudio.Wave;
 namespace EchoDeck.App;
 
 /// <summary>
-/// Main window: preflight status, device pickers (with show/hide for disabled &amp;
-/// disconnected), live effect toggles, segmented meters, latency readout, a
-/// Broadcast-style record/compare test panel, start/stop, tray, persisted settings.
-/// Resizable + scrollable so content never clips at any size/DPI; dark theme.
+/// Main window — NVIDIA-Broadcast-style: EchoDeck processes your mic continuously while
+/// open (master "Processing" toggle up top, on by default), with live effect toggles,
+/// meters, and a record/compare test panel (Record is a start/stop toggle; Input/Output
+/// each have a Play button). Two-column, dark, resizable layout.
 /// </summary>
 public sealed class MainForm : Form
 {
@@ -33,6 +33,8 @@ public sealed class MainForm : Form
     private List<DeviceInfo> _allInputs = new();
     private List<DeviceInfo> _allOutputs = new();
 
+    private readonly ToggleSwitch _power = NewToggle("Processing your mic", 13f);
+
     private readonly ComboBox _mic = NewCombo();
     private readonly ComboBox _reference = NewCombo();
     private readonly ComboBox _output = NewCombo();
@@ -49,21 +51,20 @@ public sealed class MainForm : Form
     private readonly Label _latency = new() { AutoSize = true, Text = "Latency: —", ForeColor = Color.FromArgb(152, 152, 158), Margin = new Padding(0, 10, 0, 0) };
 
     private readonly Button _record = new() { Text = "●  Record speech", AutoSize = true, Enabled = false };
-    private readonly Button _playIn = new() { Text = "▶", AutoSize = false, Enabled = false };
-    private readonly Button _playOut = new() { Text = "▶", AutoSize = false, Enabled = false };
+    private readonly Button _playIn = new() { Text = "▶  Play", AutoSize = false, Enabled = false };
+    private readonly Button _playOut = new() { Text = "▶  Play", AutoSize = false, Enabled = false };
     private readonly Button _save = new() { Text = "⤓  Save recorded samples", AutoSize = true, Enabled = false };
     private readonly WaveformView _inWave = new() { WaveColor = Color.FromArgb(175, 175, 180), FillBack = Color.FromArgb(26, 26, 28) };
     private readonly WaveformView _outWave = new() { WaveColor = Color.FromArgb(150, 212, 44), FillBack = Color.FromArgb(28, 44, 16) };
     private readonly System.Windows.Forms.Timer _recTimer = new() { Interval = 1000 };
     private readonly System.Windows.Forms.Timer _playTimer = new() { Interval = 33 };
-    private int _recCountdown;
+    private bool _recording;
+    private int _recElapsed;
     private byte[]? _rawWav, _procWav;
     private IWavePlayer? _player;
     private WaveStream? _playReader;
     private WaveformView? _activeWave;
 
-    private readonly Button _start = new() { Text = "Start", AutoSize = true };
-    private readonly Button _stop = new() { Text = "Stop", Enabled = false, AutoSize = true };
     private readonly Label _status = new() { Text = "Stopped", AutoSize = true };
     private readonly Label _sdkLabel = new() { AutoSize = true };
     private readonly Label _cableLabel = new() { AutoSize = true };
@@ -73,6 +74,8 @@ public sealed class MainForm : Form
     private readonly NotifyIcon _tray;
 
     private TableLayoutPanel? _root;
+    private bool _suppressPower;
+    private bool _autoStarted;
     private bool _reallyExit;
 
     public MainForm()
@@ -89,19 +92,22 @@ public sealed class MainForm : Form
         int screenH = Screen.PrimaryScreen?.WorkingArea.Height ?? 1000;
         ClientSize = new Size(Math.Max(1080, longest * 2 + 180), Math.Min(1000, screenH - 90));
 
-        var host = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Bg };
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Top,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 1,
-            Padding = new Padding(28, 22, 28, 28),
+            Padding = new Padding(28, 20, 28, 28),
             BackColor = Bg
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
 
-        // STATUS — spans the full width across the top
+        // master power toggle (auto-on)
+        _power.Margin = new Padding(0, 0, 0, 6);
+        root.Controls.Add(_power);
+
+        // STATUS (full width)
         root.Controls.Add(SectionHeader("STATUS"));
         var banner = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, WrapContents = false, BackColor = Bg, Margin = new Padding(0) };
         banner.Controls.Add(_sdkLabel);
@@ -112,7 +118,7 @@ public sealed class MainForm : Form
         banner.Controls.Add(_vmicButton);
         root.Controls.Add(banner);
 
-        // ── two columns: devices+effects | levels+test ──────────────────────────
+        // two columns
         var left = NewColumn();
         left.Controls.Add(SectionHeader("DEVICES"));
         left.Controls.Add(FieldLabel("Microphone"));
@@ -141,10 +147,11 @@ public sealed class MainForm : Form
         right.Controls.Add(MeterRow("Output", _outLevel));
         right.Controls.Add(_latency);
         right.Controls.Add(SectionHeader("TEST MICROPHONE EFFECTS"));
-        right.Controls.Add(FieldLabel("Record a sample while running, then play Input vs Output to compare."));
+        right.Controls.Add(FieldLabel("Record a sample, then play Input vs Output to hear the difference."));
         StyleFlat(_record, Panel, Error);
-        _record.Padding = new Padding(18, 10, 18, 10);
+        _record.Padding = new Padding(20, 10, 20, 10);
         _record.Margin = new Padding(0, 8, 0, 0);
+        _record.Font = new Font("Segoe UI", 11.5f);
         right.Controls.Add(_record);
         right.Controls.Add(BuildWaves());
         StyleFlat(_save, Bg, SubText);
@@ -162,13 +169,12 @@ public sealed class MainForm : Form
         body.Controls.Add(right, 1, 0);
         root.Controls.Add(body);
 
-        // CONTROLS — full width across the bottom
-        root.Controls.Add(ButtonRow());
         _status.ForeColor = SubText;
         _status.Margin = new Padding(0, 16, 0, 0);
         root.Controls.Add(_status);
 
         _root = root;
+        var host = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Bg };
         host.Controls.Add(root);
         Controls.Add(host);
         WireEvents();
@@ -178,8 +184,7 @@ public sealed class MainForm : Form
         _tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "EchoDeck", Visible = true };
         var menu = new ContextMenuStrip();
         menu.Items.Add("Show EchoDeck", null, (_, _) => ShowFromTray());
-        menu.Items.Add("Start", null, (_, _) => StartEngine());
-        menu.Items.Add("Stop", null, (_, _) => _engine.Stop());
+        menu.Items.Add("Pause / resume", null, (_, _) => _power.Checked = !_power.Checked);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => { _reallyExit = true; Close(); });
         _tray.ContextMenuStrip = menu;
@@ -216,7 +221,7 @@ public sealed class MainForm : Form
         AutoSize = true,
         ForeColor = SubText,
         Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-        Margin = new Padding(0, 24, 0, 10)
+        Margin = new Padding(0, 22, 0, 10)
     };
 
     private Label FieldLabel(string text) => new()
@@ -257,22 +262,22 @@ public sealed class MainForm : Form
 
     private TableLayoutPanel BuildWaves()
     {
-        var t = new TableLayoutPanel { Dock = DockStyle.Top, Height = 156, ColumnCount = 3, RowCount = 2, Margin = new Padding(0, 10, 0, 0), BackColor = Bg };
-        t.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 132));
-        t.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 52));
+        var t = new TableLayoutPanel { Dock = DockStyle.Top, Height = 168, ColumnCount = 3, RowCount = 2, Margin = new Padding(0, 10, 0, 0), BackColor = Bg };
+        t.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+        t.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96));
         t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        t.RowStyles.Add(new RowStyle(SizeType.Absolute, 78));
-        t.RowStyles.Add(new RowStyle(SizeType.Absolute, 78));
+        t.RowStyles.Add(new RowStyle(SizeType.Absolute, 84));
+        t.RowStyles.Add(new RowStyle(SizeType.Absolute, 84));
 
         StylePlay(_playIn);
         StylePlay(_playOut);
-        _inWave.Dock = DockStyle.Fill; _inWave.Margin = new Padding(0, 11, 0, 11);
-        _outWave.Dock = DockStyle.Fill; _outWave.Margin = new Padding(0, 11, 0, 11);
+        _inWave.Dock = DockStyle.Fill; _inWave.Margin = new Padding(0, 12, 0, 12);
+        _outWave.Dock = DockStyle.Fill; _outWave.Margin = new Padding(0, 12, 0, 12);
 
-        t.Controls.Add(WaveLabel("Input audio"), 0, 0);
+        t.Controls.Add(WaveLabel("Input"), 0, 0);
         t.Controls.Add(_playIn, 1, 0);
         t.Controls.Add(_inWave, 2, 0);
-        t.Controls.Add(WaveLabel("Output audio"), 0, 1);
+        t.Controls.Add(WaveLabel("Output"), 0, 1);
         t.Controls.Add(_playOut, 1, 1);
         t.Controls.Add(_outWave, 2, 1);
         return t;
@@ -290,28 +295,8 @@ public sealed class MainForm : Form
     {
         StyleFlat(b, Panel, TextColor);
         b.Dock = DockStyle.Fill;
-        b.Margin = new Padding(0, 23, 8, 23);
-        b.Font = new Font("Segoe UI", 11f);
-    }
-
-    private FlowLayoutPanel ButtonRow()
-    {
-        StyleFlat(_start, Accent, Color.Black);
-        _start.Font = new Font("Segoe UI", 12f, FontStyle.Bold);
-        _start.Padding = new Padding(46, 12, 46, 12);
-        StyleFlat(_stop, Panel, TextColor);
-        _stop.Font = new Font("Segoe UI", 12f);
-        _stop.Padding = new Padding(50, 12, 50, 12);
-        _stop.Margin = new Padding(16, 0, 0, 0);
-        return new FlowLayoutPanel
-        {
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            FlowDirection = FlowDirection.LeftToRight,
-            Margin = new Padding(0, 22, 0, 0),
-            BackColor = Bg,
-            Controls = { _start, _stop }
-        };
+        b.Margin = new Padding(0, 26, 10, 26);
+        b.Font = new Font("Segoe UI", 10.5f);
     }
 
     private static void StyleFlat(Button b, Color back, Color fore)
@@ -336,10 +321,15 @@ public sealed class MainForm : Form
     // ── events ───────────────────────────────────────────────────────────────────
     private void WireEvents()
     {
+        _power.CheckedChanged += (_, _) =>
+        {
+            if (_suppressPower) return;
+            if (_power.Checked) StartEngine();
+            else _engine.Stop();
+        };
+
         _refresh.Click += (_, _) => Reload();
         _vmicButton.Click += (_, _) => OnInstallVirtualMic();
-        _start.Click += (_, _) => StartEngine();
-        _stop.Click += (_, _) => _engine.Stop();
 
         _showDisabled.CheckedChanged += (_, _) => { _config.ShowDisabledDevices = _showDisabled.Checked; SaveConfig(); ApplyDeviceLists(); };
         _showDisconnected.CheckedChanged += (_, _) => { _config.ShowDisconnectedDevices = _showDisconnected.Checked; SaveConfig(); ApplyDeviceLists(); };
@@ -352,15 +342,15 @@ public sealed class MainForm : Form
         _noise.CheckedChanged += (_, _) => { _engine.NoiseRemovalEnabled = _noise.Checked; SaveConfig(); };
         _echo.CheckedChanged += (_, _) => { _engine.RoomEchoRemovalEnabled = _echo.Checked; SaveConfig(); };
 
-        _record.Click += async (_, _) => await RecordTest();
+        _record.Click += (_, _) => ToggleRecord();
         _playIn.Click += (_, _) => Play(_rawWav, "input", _inWave);
         _playOut.Click += (_, _) => Play(_procWav, "output", _outWave);
         _save.Click += (_, _) => SaveSamples();
         _recTimer.Tick += (_, _) =>
         {
-            _recCountdown--;
-            _record.Text = _recCountdown > 0 ? $"●  Recording… {_recCountdown}" : "●  Recording…";
-            if (_recCountdown <= 0) _recTimer.Stop();
+            _recElapsed++;
+            _record.Text = $"■  Stop  {_recElapsed}s";
+            if (_recElapsed >= 60) EndRecord(); // safety cap
         };
         _playTimer.Tick += (_, _) =>
         {
@@ -395,9 +385,17 @@ public sealed class MainForm : Form
         _engine.NoiseRemovalEnabled = _noise.Checked;
         _engine.RoomEchoRemovalEnabled = _echo.Checked;
 
-        await RefreshDevicesAsync(); // enumerate off the UI thread, then fill
+        await RefreshDevicesAsync();
 
         _initializing = false;
+
+        // Auto-start processing once, on first load (Broadcast-style "always on").
+        if (!_autoStarted)
+        {
+            _autoStarted = true;
+            if (SelId(_mic) != null && SelId(_output) != null)
+                _power.Checked = true; // fires StartEngine
+        }
     }
 
     private async Task RefreshDevicesAsync()
@@ -477,27 +475,12 @@ public sealed class MainForm : Form
                 _status.ForeColor = SubText;
                 return;
             }
-
             _status.Text = "Installing the virtual mic driver — accept the UAC prompt…";
             _status.ForeColor = SubText;
             string? result = await VirtualMicManager.InstallVirtualAudioDriverAsync();
-            if (result == null)
-            {
-                _status.Text = "Virtual mic driver installed.";
-                _status.ForeColor = Ok;
-                Reload();
-            }
-            else if (result is "no-package" or "no-installer")
-            {
-                OpenUrl(VirtualMicManager.VadReleases);
-                _status.Text = "No bundled installer found — opened the download page.";
-                _status.ForeColor = SubText;
-            }
-            else
-            {
-                _status.Text = result;
-                _status.ForeColor = Error;
-            }
+            if (result == null) { _status.Text = "Virtual mic driver installed."; _status.ForeColor = Ok; Reload(); }
+            else if (result is "no-package" or "no-installer") { OpenUrl(VirtualMicManager.VadReleases); _status.Text = "No bundled installer found — opened the download page."; _status.ForeColor = SubText; }
+            else { _status.Text = result; _status.ForeColor = Error; }
         }
         finally { _vmicButton.Enabled = true; }
     }
@@ -505,7 +488,7 @@ public sealed class MainForm : Form
     private static void OpenUrl(string url)
     {
         try { Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true }); }
-        catch { /* no browser */ }
+        catch { }
     }
 
     private void Gate(ToggleSwitch sw, bool available, string what)
@@ -560,23 +543,43 @@ public sealed class MainForm : Form
         _engine.Start();
     }
 
-    private async Task RecordTest()
+    private void ToggleRecord()
+    {
+        if (!_recording) BeginRecord();
+        else EndRecord();
+    }
+
+    private void BeginRecord()
     {
         if (_engine.State != EngineState.Running)
         {
-            _status.Text = "Start EchoDeck first, then record.";
+            _status.Text = "Turn on processing first, then record.";
             _status.ForeColor = Warn;
             return;
         }
-
-        _record.Enabled = false;
+        if (!_engine.StartMicTest(TimeSpan.FromSeconds(60))) return;
+        StopPlayer();
+        _inWave.SetSamples(null);
+        _outWave.SetSamples(null);
         _playIn.Enabled = _playOut.Enabled = _save.Enabled = false;
-        _recCountdown = 5;
-        _record.Text = "●  Recording… 5";
+        _recording = true;
+        _recElapsed = 0;
+        _record.Text = "■  Stop  0s";
         _recTimer.Start();
-        try
+        _status.Text = "Recording — speak now, then click Stop.";
+        _status.ForeColor = SubText;
+    }
+
+    private void EndRecord()
+    {
+        if (!_recording) return;
+        _recTimer.Stop();
+        _recording = false;
+        _record.Text = "●  Record speech";
+
+        TestCaptureResult? r = _engine.StopMicTest();
+        if (r != null && r.RawWav.Length > 44)
         {
-            TestCaptureResult r = await _engine.RunMicTestAsync(TimeSpan.FromSeconds(5));
             _rawWav = r.RawWav;
             _procWav = r.ProcessedWav;
             _inWave.SetSamples(DecodeWav(_rawWav));
@@ -584,17 +587,6 @@ public sealed class MainForm : Form
             _playIn.Enabled = _playOut.Enabled = _save.Enabled = true;
             _status.Text = "Recorded — play Input vs Output to compare.";
             _status.ForeColor = SubText;
-        }
-        catch (Exception ex)
-        {
-            _status.Text = ex.Message;
-            _status.ForeColor = Error;
-        }
-        finally
-        {
-            _recTimer.Stop();
-            _record.Text = "●  Record speech";
-            _record.Enabled = _engine.State == EngineState.Running;
         }
     }
 
@@ -624,11 +616,7 @@ public sealed class MainForm : Form
             _status.Text = $"Playing {which}…";
             _status.ForeColor = SubText;
         }
-        catch (Exception ex)
-        {
-            _status.Text = ex.Message;
-            _status.ForeColor = Error;
-        }
+        catch (Exception ex) { _status.Text = ex.Message; _status.ForeColor = Error; }
     }
 
     private void OnPlaybackStopped()
@@ -661,11 +649,7 @@ public sealed class MainForm : Form
             _status.Text = $"Saved {name}_input.wav and {name}_output.wav.";
             _status.ForeColor = SubText;
         }
-        catch (Exception ex)
-        {
-            _status.Text = ex.Message;
-            _status.ForeColor = Error;
-        }
+        catch (Exception ex) { _status.Text = ex.Message; _status.ForeColor = Error; }
     }
 
     private void SetLatency(double ms)
@@ -673,6 +657,13 @@ public sealed class MainForm : Form
         if (IsDisposed || Disposing) return;
         if (InvokeRequired) { try { BeginInvoke((Action)(() => _latency.Text = $"Latency ≈ {ms:0} ms")); } catch { } return; }
         _latency.Text = $"Latency ≈ {ms:0} ms";
+    }
+
+    private void SetPowerVisual(bool on)
+    {
+        _suppressPower = true;
+        _power.Checked = on;
+        _suppressPower = false;
     }
 
     private void OnEngineStatus(object? sender, EngineStatusEventArgs e)
@@ -683,16 +674,19 @@ public sealed class MainForm : Form
         _status.ForeColor = e.IsError ? Error : SubText;
 
         bool busy = e.State is EngineState.Running or EngineState.Starting;
-        _start.Enabled = !busy;
-        _stop.Enabled = busy;
+        bool running = e.State == EngineState.Running;
+        SetPowerVisual(busy);
+
         _mic.Enabled = _reference.Enabled = _output.Enabled = _refresh.Enabled = !busy;
         _showDisabled.Enabled = _showDisconnected.Enabled = !busy;
-        _record.Enabled = e.State == EngineState.Running;
+
+        if (!running && _recording) EndRecord();
+        _record.Enabled = running;
 
         string tip = $"EchoDeck — {e.Message}";
         _tray.Text = tip.Length <= 63 ? tip : "EchoDeck";
 
-        if (!busy)
+        if (!running)
         {
             _inLevel.SetLevel(0, false);
             _outLevel.SetLevel(0, false);
@@ -719,7 +713,6 @@ public sealed class MainForm : Form
     {
         base.OnLoad(e);
         if (_root == null) return;
-        // Open sized to the content (capped to the screen), then stay freely resizable.
         int contentH = _root.GetPreferredSize(new Size(ClientSize.Width, 0)).Height + 8;
         Rectangle area = Screen.FromControl(this)?.WorkingArea ?? new Rectangle(0, 0, 1280, 1000);
         int targetH = Math.Min(contentH, area.Height - 70);

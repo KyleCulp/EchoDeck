@@ -220,13 +220,21 @@ public sealed class AudioEngine : IDisposable
             _outBuffer?.AddSamples(pcm, 0, n);
 
             TestSession? test = _test;
-            if (test != null && test.Remaining > 0)
+            if (test != null)
             {
-                int rn = SampleConvert.FloatToPcm16(near, pcmNear);
-                test.Raw.Write(pcmNear, 0, rn);
-                test.Proc.Write(pcm, 0, n);
-                test.Remaining -= FrameSamples;
-                if (test.Remaining <= 0) { _test = null; test.Finish(); }
+                if (!test.StopRequested && test.Remaining > 0)
+                {
+                    int rn = SampleConvert.FloatToPcm16(near, pcmNear);
+                    test.Raw.Write(pcmNear, 0, rn);
+                    test.Proc.Write(pcm, 0, n);
+                    test.Remaining -= FrameSamples;
+                    if (test.Remaining <= 0) { _test = null; test.Finish(); }
+                }
+                else // stop requested (or capped) — finalize on this thread
+                {
+                    _test = null;
+                    test.Finish();
+                }
             }
 
             UpdateLevels(near, src);
@@ -330,34 +338,56 @@ public sealed class AudioEngine : IDisposable
     /// output — and return both as in-memory WAVs for A/B playback (like Broadcast's
     /// "Record speech"). Requires the engine to be running.
     /// </summary>
-    public Task<TestCaptureResult> RunMicTestAsync(TimeSpan duration, CancellationToken ct = default)
-    {
-        if (State != EngineState.Running)
-            throw new InvalidOperationException("Start EchoDeck before recording a test.");
+    /// <summary>True while a mic test is capturing.</summary>
+    public bool IsTesting => _test != null;
 
+    /// <summary>Begin an open-ended mic test (raw + processed), auto-capped at maxDuration.</summary>
+    public bool StartMicTest(TimeSpan maxDuration)
+    {
+        if (State != EngineState.Running || _test != null) return false;
         var fmt = new WaveFormat(SampleRate, 16, 1);
         var rawMs = new MemoryStream();
         var procMs = new MemoryStream();
-        var session = new TestSession
+        _test = new TestSession
         {
+            RawMs = rawMs,
+            ProcMs = procMs,
             Raw = new WaveFileWriter(rawMs, fmt),
             Proc = new WaveFileWriter(procMs, fmt),
-            Remaining = Math.Max(FrameSamples, (int)(duration.TotalSeconds * SampleRate))
+            Remaining = Math.Max(FrameSamples, (int)(maxDuration.TotalSeconds * SampleRate))
         };
-        _test = session;
+        return true;
+    }
 
-        return Task.Run(() =>
-        {
-            session.Done.Wait(ct);
-            return new TestCaptureResult(rawMs.ToArray(), procMs.ToArray(), fmt);
-        }, ct);
+    /// <summary>Stop the current mic test and return the captured raw + processed WAVs.</summary>
+    public TestCaptureResult? StopMicTest()
+    {
+        TestSession? s = _test;
+        if (s == null) return null;
+        s.StopRequested = true;
+        _frameReady.Set();
+        s.Done.Wait(2000);
+        return new TestCaptureResult(s.RawMs.ToArray(), s.ProcMs.ToArray(), new WaveFormat(SampleRate, 16, 1));
+    }
+
+    /// <summary>Fixed-duration mic test (used by the self-test).</summary>
+    public async Task<TestCaptureResult> RunMicTestAsync(TimeSpan duration, CancellationToken ct = default)
+    {
+        if (!StartMicTest(duration))
+            throw new InvalidOperationException("Start EchoDeck before recording a test.");
+        TestSession s = _test!;
+        await Task.Run(() => s.Done.Wait(ct), ct);
+        return new TestCaptureResult(s.RawMs.ToArray(), s.ProcMs.ToArray(), new WaveFormat(SampleRate, 16, 1));
     }
 
     private sealed class TestSession
     {
+        public required MemoryStream RawMs { get; init; }
+        public required MemoryStream ProcMs { get; init; }
         public required WaveFileWriter Raw { get; init; }
         public required WaveFileWriter Proc { get; init; }
         public int Remaining;
+        public volatile bool StopRequested;
         public readonly ManualResetEventSlim Done = new(false);
 
         public void Finish()
