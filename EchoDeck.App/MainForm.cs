@@ -225,16 +225,25 @@ public sealed class MainForm : Form
         right.Controls.Add(MeterRow("Output", _outLevel));
         right.Controls.Add(SectionHeader("TEST MICROPHONE EFFECTS"));
         right.Controls.Add(FieldLabel("Record a sample, then play Input vs Output to hear the difference."));
+        right.Controls.Add(BuildWaves());
+
+        // Action row under the waveforms: Record (left) + Save-as-icon (inline, tooltip on hover).
         StyleFlat(_record, Panel, Error);
         _record.Padding = new Padding(20, 10, 20, 10);
-        _record.Margin = new Padding(0, 8, 0, 0);
         _record.Font = new Font("Segoe UI", 11.5f);
-        right.Controls.Add(_record);
-        right.Controls.Add(BuildWaves());
-        StyleFlat(_save, Bg, SubText);
-        _save.FlatAppearance.BorderColor = Bg;
-        _save.Margin = new Padding(0, 10, 0, 0);
-        right.Controls.Add(_save);
+        _record.Margin = new Padding(0);
+        StyleFlat(_save, Panel, SubText);
+        _save.AutoSize = false;
+        _save.Size = new Size(44, 44);
+        _save.Text = "⤓";
+        _save.Font = new Font("Segoe UI", 15f);
+        _save.TextAlign = ContentAlignment.MiddleCenter;
+        _save.Margin = new Padding(12, 0, 0, 0);
+        _tips.SetToolTip(_save, "Save recorded samples");
+        var testActions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = Bg, Margin = new Padding(0, 12, 0, 0) };
+        testActions.Controls.Add(_record);
+        testActions.Controls.Add(_save);
+        right.Controls.Add(testActions);
 
         var body = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 2, RowCount = 1, BackColor = Bg, Margin = new Padding(0, 4, 0, 0) };
         body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52f));
