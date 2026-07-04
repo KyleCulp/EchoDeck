@@ -1,19 +1,19 @@
+using System.Drawing.Drawing2D;
+
 namespace EchoDeck.App;
 
 /// <summary>
-/// Segmented horizontal VU meter in the NVIDIA Broadcast style: a row of small blocks
-/// that light up green (amber near the top, red on clip) to the current level.
+/// Horizontal VU meter drawn as a rounded inset track with a gradient fill to the current
+/// level (green for the processed output, grey for the raw input; red on clip). Faint ticks
+/// mark the scale.
 /// </summary>
 public sealed class LevelMeter : Control
 {
-    private static readonly Color Bg = Color.FromArgb(32, 32, 34);
-    private static readonly Color Off = Color.FromArgb(52, 52, 56);
-    private static readonly Color Green = Color.FromArgb(118, 185, 0);
-    private static readonly Color Amber = Color.FromArgb(232, 176, 60);
-    private static readonly Color Red = Color.FromArgb(232, 72, 72);
-
-    private const int SegW = 9;
-    private const int Gap = 4;
+    public Color FillStart { get; set; } = Color.FromArgb(95, 143, 36);
+    public Color FillEnd { get; set; } = Color.FromArgb(150, 212, 44);
+    public Color TrackColor { get; set; } = Color.FromArgb(34, 38, 46);
+    public Color BorderColor { get; set; } = Color.FromArgb(43, 48, 58);
+    private static readonly Color ClipColor = Color.FromArgb(232, 72, 72);
 
     private float _level;
     private bool _clip;
@@ -24,8 +24,8 @@ public sealed class LevelMeter : Control
                | ControlStyles.OptimizedDoubleBuffer
                | ControlStyles.UserPaint
                | ControlStyles.ResizeRedraw, true);
-        Height = 18;
-        BackColor = Bg;
+        Height = 16;
+        BackColor = Color.FromArgb(32, 32, 34);
     }
 
     public void SetLevel(float level, bool clip)
@@ -40,21 +40,36 @@ public sealed class LevelMeter : Control
     protected override void OnPaint(PaintEventArgs e)
     {
         Graphics g = e.Graphics;
-        using (var bg = new SolidBrush(Bg)) g.FillRectangle(bg, ClientRectangle);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using (var bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
 
-        int count = Math.Max(1, (Width + Gap) / (SegW + Gap));
-        int lit = (int)Math.Round(_level * count);
+        var r = new Rectangle(0, 0, Width - 1, Height - 1);
+        int radius = Math.Max(3, Height / 3);
+        using var path = RoundRect.Path(r, radius);
 
-        for (int i = 0; i < count; i++)
+        using (var track = new SolidBrush(TrackColor)) g.FillPath(track, path);
+
+        // fill to level (clipped to the rounded track)
+        var savedClip = g.Clip;
+        g.SetClip(path, CombineMode.Replace);
+        int fillW = (int)Math.Round(_level * (r.Width - 2));
+        if (fillW > 2)
         {
-            var rect = new Rectangle(i * (SegW + Gap), 1, SegW, Height - 2);
-            Color c;
-            if (i < lit)
-                c = _clip ? Red : (i / (float)count) > 0.85f ? Amber : Green;
+            var fillRect = new Rectangle(r.X + 1, r.Y + 1, fillW, r.Height - 1);
+            if (_clip)
+            {
+                using var b = new SolidBrush(ClipColor);
+                g.FillRectangle(b, fillRect);
+            }
             else
-                c = Off;
-            using var b = new SolidBrush(c);
-            g.FillRectangle(b, rect);
+            {
+                using var b = new LinearGradientBrush(
+                    new Rectangle(r.X, r.Y, r.Width, r.Height), FillStart, FillEnd, LinearGradientMode.Horizontal);
+                g.FillRectangle(b, fillRect);
+            }
         }
+        g.Clip = savedClip;
+
+        using (var pen = new Pen(BorderColor)) g.DrawPath(pen, path);
     }
 }

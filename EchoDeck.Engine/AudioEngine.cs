@@ -255,21 +255,47 @@ public sealed class AudioEngine : IDisposable
         _post?.Dispose(); _post = null;
     }
 
-    /// <summary>(Re)build the NvAFX chain from the current config. Runs on the proc thread.</summary>
+    /// <summary>
+    /// (Re)build the NvAFX chain from the current config. Runs on the proc thread.
+    /// Builds the new handles first and only swaps them in once all loads succeed, so a
+    /// failed reconfigure (missing model / GPU OOM) keeps the previously working chain
+    /// instead of dropping to silent passthrough.
+    /// </summary>
     private void RebuildChain()
     {
-        _aec?.Dispose(); _aec = null;
-        _post?.Dispose(); _post = null;
+        NvAfxEffect? newAec = null;
+        NvAfxEffect? newPost = null;
+        try
+        {
+            if (_aecEnabled && _farCap != null)
+                newAec = new NvAfxEffect(SdkDir, "aec", "aec_48k.trtpkg", 2);
 
-        if (_aecEnabled && _farCap != null)
-            _aec = new NvAfxEffect(SdkDir, "aec", "aec_48k.trtpkg", 2);
+            if (_noise && _echo)
+                newPost = new NvAfxEffect(SdkDir, "dereverb_denoiser", "dereverb_denoiser_48k.trtpkg", 1);
+            else if (_echo)
+                newPost = new NvAfxEffect(SdkDir, "dereverb", "dereverb_48k.trtpkg", 1);
+            else if (_noise)
+                newPost = new NvAfxEffect(SdkDir, "denoiser", "denoiser_48k.trtpkg", 1);
+        }
+        catch
+        {
+            // Loading failed — throw away the partial build, keep the old chain running.
+            newAec?.Dispose();
+            newPost?.Dispose();
+            throw;
+        }
 
-        if (_noise && _echo)
-            _post = new NvAfxEffect(SdkDir, "dereverb_denoiser", "dereverb_denoiser_48k.trtpkg", 1);
-        else if (_echo)
-            _post = new NvAfxEffect(SdkDir, "dereverb", "dereverb_48k.trtpkg", 1);
-        else if (_noise)
-            _post = new NvAfxEffect(SdkDir, "denoiser", "denoiser_48k.trtpkg", 1);
+        // All loads succeeded — swap atomically (single-threaded here), then dispose the old.
+        bool aecNewlyEnabled = newAec != null && _aec == null;
+        NvAfxEffect? oldAec = _aec, oldPost = _post;
+        _aec = newAec;
+        _post = newPost;
+        oldAec?.Dispose();
+        oldPost?.Dispose();
+
+        // AEC just came on: drop stale far-end audio so cancellation starts from a clean,
+        // time-aligned reference rather than whatever accumulated while AEC was off.
+        if (aecNewlyEnabled) _farRing.Clear();
     }
 
     private void RequestRebuild()

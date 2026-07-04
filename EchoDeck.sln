@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EchoDeck.App", "EchoDeck.Ap
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EchoDeck.Engine", "EchoDeck.Engine\EchoDeck.Engine.csproj", "{FEBAB0C3-76F5-426E-8C9E-A4F0607EC5AA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EchoDeck.Tests", "EchoDeck.Tests\EchoDeck.Tests.csproj", "{C0BD287A-14ED-44E5-ADA6-1A2EFC809817}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -24,5 +26,9 @@ Global
 		{FEBAB0C3-76F5-426E-8C9E-A4F0607EC5AA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FEBAB0C3-76F5-426E-8C9E-A4F0607EC5AA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FEBAB0C3-76F5-426E-8C9E-A4F0607EC5AA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C0BD287A-14ED-44E5-ADA6-1A2EFC809817}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C0BD287A-14ED-44E5-ADA6-1A2EFC809817}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C0BD287A-14ED-44E5-ADA6-1A2EFC809817}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C0BD287A-14ED-44E5-ADA6-1A2EFC809817}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

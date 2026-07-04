@@ -7,6 +7,7 @@ A profile captures everything needed to switch context in one click/hotkey:
 - **EchoDeck routing:** mic device, AEC reference (speaker to loopback), output (virtual mic) — all by `MMDevice.ID`.
 - **Effect chain:** which effects are on + their intensities + Studio Voice mode.
 - **Optional Windows defaults:** whether selecting this profile should also set the Windows default playback/recording device (via `IPolicyConfig`) — so e.g. switching to "Speakers" also makes Windows route system audio there.
+- **Optional Discord settings:** per-profile Discord voice config (processing on/off, PTT vs VAD, follow the virtual mic) via local RPC — see [`11-discord-integration.md`](11-discord-integration.md).
 
 ### Example profiles (the user's real setups)
 | Profile | Output (Windows default?) | Mic | AEC ref | Effects |
@@ -31,6 +32,7 @@ public sealed class AudioProfile {
     public string? WindowsDefaultRecordingId { get; set; }
     public string? Hotkey { get; set; }             // e.g. "Ctrl+Alt+1"
     public string? AppTrigger { get; set; }         // optional: process/window name to auto-activate (nice-to-have)
+    public DiscordProfileSettings? Discord { get; set; }   // null = don't touch Discord (schema in 11)
 }
 
 // add to EngineConfig:
@@ -44,8 +46,9 @@ Persisted in the same `%APPDATA%\EchoDeck\config.json`.
 1. Set engine `InputDeviceId` / `FarEndDeviceId` / `OutputDeviceId` (restart only the changed capture/render nodes).
 2. Set `Chain` and call `ApplyChain()` (atomic rebuild — keep-old-on-failure, see [`03`](03-nvidia-effects.md)).
 3. If `SetWindowsDefault*`, call `IPolicyConfig.SetDefaultEndpoint(...)` for the chosen device(s).
-4. Set `ActiveProfileId`; raise `ProfileChanged`; toast the new profile name; persist.
-Failure in any step → roll back to the previous profile and raise `ErrorOccurred`.
+4. If `Discord != null` and the RPC client is connected, send one `SET_VOICE_SETTINGS` with the non-null fields ([`11`](11-discord-integration.md)) — **non-fatal**: failure toasts a warning, never rolls back the audio switch.
+5. Set `ActiveProfileId`; raise `ProfileChanged`; toast the new profile name; persist.
+Failure in steps 1–3 → roll back to the previous profile and raise `ErrorOccurred`.
 
 ## Switching UX
 - **GUI:** a profile dropdown/segmented control at the top of `MainForm`; an editor to create/rename/duplicate/delete profiles and capture the current setup as a new profile ("Save current as profile…").

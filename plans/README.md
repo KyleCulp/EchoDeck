@@ -40,6 +40,8 @@ TARGET (1 app + 1 driver):
 | Virtual mic | **OSS Virtual-Audio-Driver (signed) from the start**; VB-Cable kept only as a fallback seam | User wants off VB-Cable; a .NET app can't be a driver itself |
 | Device switching | **In-app pickers + global hotkeys** (set Windows default) | Replaces SoundSwitch |
 | Autostart | App-managed (registry Run key + tray) | Replaces Task Scheduler + `start-bridge.bat` |
+| Discord control | **Local RPC** (`SET_VOICE_SETTINGS`) to auto-disable Discord's NS/EC/AGC and select the virtual mic; user brings their own Discord app ID (one-time wizard) | Prevents double-processing artifacts; last manual setup step removed |
+| License | **MIT** — SoundSwitch (GPLv2) is a *behavioral* reference only, no code copied | Keep the repo permissive; the interop it would provide is small and already specced in [`05`](05-device-switching.md) |
 
 ## Doc index
 | Doc | Component |
@@ -55,6 +57,7 @@ TARGET (1 app + 1 driver):
 | [`08-roadmap.md`](08-roadmap.md) | Phased implementation + status checklist |
 | [`09-oss-repo.md`](09-oss-repo.md) | Open-source repo setup, MIT license, CI/release, governance |
 | [`10-profiles.md`](10-profiles.md) | Audio profiles — switchable device + effect bundles |
+| [`11-discord-integration.md`](11-discord-integration.md) | Discord voice-settings control via local RPC (Stream Deck-style) |
 | [`legacy-console-setup.md`](legacy-console-setup.md) | Runbook for the original `nv-aec-bridge` console prototype |
 
 ## Source material in the repo (reuse, don't rewrite)

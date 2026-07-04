@@ -12,11 +12,15 @@ internal sealed unsafe class NvAfxEffect : IDisposable
     public int InputChannels { get; }
 
     private IntPtr _handle;
+    // Reused every frame so the ~100 fps hot path stays allocation-free (plan 02: zero-alloc).
+    private readonly IntPtr[] _inputPtrs;
+    private readonly IntPtr[] _outputPtrs = new IntPtr[1];
 
     public NvAfxEffect(string sdkDir, string code, string modelFile, int inputChannels, float intensity = 1.0f)
     {
         Code = code;
         InputChannels = inputChannels;
+        _inputPtrs = new IntPtr[inputChannels];
 
         NvAfx.EnsureSdkOnPath(sdkDir);
         string model = Path.Combine(sdkDir, "models", modelFile);
@@ -41,11 +45,10 @@ internal sealed unsafe class NvAfxEffect : IDisposable
         fixed (float* pFar = far)
         fixed (float* pOut = output)
         {
-            IntPtr[] input = InputChannels == 2
-                ? new[] { (IntPtr)pPrimary, (IntPtr)pFar }
-                : new[] { (IntPtr)pPrimary };
-            IntPtr[] outp = { (IntPtr)pOut };
-            Check(NvAfx.NvAFX_Run(_handle, input, outp, primary.Length, InputChannels), $"Run({Code})");
+            _inputPtrs[0] = (IntPtr)pPrimary;
+            if (InputChannels == 2) _inputPtrs[1] = (IntPtr)pFar;
+            _outputPtrs[0] = (IntPtr)pOut;
+            Check(NvAfx.NvAFX_Run(_handle, _inputPtrs, _outputPtrs, primary.Length, InputChannels), $"Run({Code})");
         }
     }
 

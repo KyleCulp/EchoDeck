@@ -32,25 +32,32 @@ public static class ConfigStore
 
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
-    public static EngineConfig Load()
+    public static EngineConfig Load() => LoadFrom(FilePath);
+
+    public static void Save(EngineConfig config) => SaveTo(FilePath, config);
+
+    /// <summary>Load from an explicit path; corrupt/missing → defaults. Testable seam.</summary>
+    internal static EngineConfig LoadFrom(string path)
     {
         try
         {
-            if (File.Exists(FilePath))
-                return JsonSerializer.Deserialize<EngineConfig>(File.ReadAllText(FilePath)) ?? new EngineConfig();
+            if (File.Exists(path))
+                return JsonSerializer.Deserialize<EngineConfig>(File.ReadAllText(path)) ?? new EngineConfig();
         }
         catch { /* corrupt/unreadable → defaults */ }
         return new EngineConfig();
     }
 
-    public static void Save(EngineConfig config)
+    /// <summary>Atomic-ish write to an explicit path (temp file + replace). Testable seam.</summary>
+    internal static void SaveTo(string path, EngineConfig config)
     {
         try
         {
-            System.IO.Directory.CreateDirectory(Directory);
-            string tmp = FilePath + ".tmp";
+            string? dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir)) System.IO.Directory.CreateDirectory(dir);
+            string tmp = path + ".tmp";
             File.WriteAllText(tmp, JsonSerializer.Serialize(config, Options));
-            File.Move(tmp, FilePath, overwrite: true); // atomic-ish replace
+            File.Move(tmp, path, overwrite: true); // atomic-ish replace
         }
         catch { /* best effort */ }
     }

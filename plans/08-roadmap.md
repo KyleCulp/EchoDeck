@@ -3,7 +3,7 @@
 Phased implementation order. Each phase is independently shippable/testable. **Phase 2 alone fixes the "major delay"** and should be validated before going further. Update the checkboxes and the status line as you go so the next session knows where things stand.
 
 ## Current status
-> **Phases 1–4 + most of Phase 6 implemented on branch `feat/engine-phase1-2` — `dotnet build -c Release` is green.** `EchoDeck.sln` = `EchoDeck.Engine` + `EchoDeck.App` (dark, DPI-safe, roomy WinForms tray UI). Working: device pickers showing **all device states** (active/disabled/unplugged), **AEC + Noise + Room Echo live toggles** (gated), **SDK + virtual-mic preflight**, **persisted settings** (`%APPDATA%\EchoDeck\config.json`), fat VU meters, and a **Broadcast-style test panel** (Record → play Input vs Output). **Pending: run on the rig to confirm parity / effects / latency.** The window is now **resizable + scrollable** with **pill toggles**, async device load, and a **latency readout**. **Phase 8 in progress:** virtual-mic detection (Virtual-Audio-Driver + VB-Cable) + elevated install flow + UI are in; still needs the signed driver binary dropped into `drivers/` and an on-machine install test. Remaining: hotkeys + profiles (Phase 7), Studio Voice + intensity sliders, packaging.
+> **Phases 1–4 + most of Phase 6 implemented on branch `feat/engine-phase1-2` — `dotnet build -c Release` is green.** `EchoDeck.sln` = `EchoDeck.Engine` + `EchoDeck.App` + `EchoDeck.Tests` (xUnit; 24 passing unit tests over `RingBuffer` / `SampleConvert` / `ConfigStore`). App is a dark, DPI-safe, roomy WinForms tray UI. Working: device pickers showing **all device states** (active/disabled/unplugged), **AEC + Noise + Room Echo live toggles** (gated), **SDK + virtual-mic preflight**, **persisted settings** (`%APPDATA%\EchoDeck\config.json`), fat VU meters, and a **Broadcast-style test panel** (Record → play Input vs Output). **Pending: run on the rig to confirm parity / effects / latency.** The window is now **resizable + scrollable** with **pill toggles**, async device load, and a **latency readout**. The live chain rebuild is now **non-destructive** (build-new-then-swap; a failed reconfigure keeps the working chain), the far-end ring is **cleared when AEC toggles on** so cancellation starts from a clean reference, and the NvAFX hot path is **allocation-free** (no per-frame `IntPtr[]`). **Phase 8 in progress:** virtual-mic detection (Virtual-Audio-Driver + VB-Cable) + elevated install flow + UI are in; still needs the signed driver binary dropped into `drivers/` and an on-machine install test. Remaining: hotkeys + profiles (Phase 7), Studio Voice + intensity sliders, full `FarEndSource` clock + device-disconnect handling (Phase 5), packaging.
 
 Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
@@ -15,7 +15,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] Move `Program.cs` helpers into Engine (`Audio/SampleConvert`, `Interop/NvAfx`); old root console project removed
 - [x] App builds; opens to a tray window with device pickers + Start/Stop *(confirm visually on the rig)*
 - **Exit check:** `dotnet build -c Release` green ✓ — launch on the rig to confirm.
-- Note: dedicated console harness skipped — the WinForms app exercises the engine directly.
+- Note: dedicated console harness skipped — the WinForms app exercises the engine directly. `--selftest` gives a headless smoke test, and `EchoDeck.Tests` (xUnit) covers the pure engine logic (ring buffer, sample conversion, config store) with no GPU/SDK dependency.
 
 ### Phase 2 — Latency fix (HIGHEST VALUE) — see [`02-audio-engine.md`](02-audio-engine.md)
 - [x] Extract NvAFX interop into `Interop/NvAfx.cs`; in-process DLL search-dir setup (`NvAfx.EnsureSdkOnPath`, drops `start-bridge.bat`)
@@ -37,17 +37,18 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] AEC + Denoiser + Dereverb + DereverbDenoiser, with the **collapse rule** when both echo+noise on
 - [x] Runtime live toggle (chain rebuilt on the proc thread; best-effort error handling)
 - [x] `NvAfxCapabilities.Probe()` → `SdkStatus`; UI gates toggles by installed models; Studio Voice probed (toggle UI deferred)
-- [ ] Intensity sliders + true keep-old-on-failure atomic swap *(deferred polish)*
+- [x] True keep-old-on-failure atomic swap — `RebuildChain` builds new handles first, swaps only on full success, disposes old after; failed load keeps the working chain
+- [ ] Intensity sliders *(deferred polish)*
 - **Exit check:** toggle each effect live; audible denoise/dereverb; no dropouts on toggle *(verify on rig)*.
 
 ### Phase 4.5 — Preflight (added) ✅
 - [x] Startup SDK probe (DLL/models/version) + **virtual-mic detection**, surfaced as a status banner; effect toggles greyed out when their model is missing.
 
 ### Phase 5 — Engine robustness — see [`02-audio-engine.md`](02-audio-engine.md)
-- [ ] `FarEndSource` clocked silence + bounded backlog + transition fade
-- [ ] `LevelMeter` (RMS/peak/clip) events
-- [ ] `RunMicTestAsync` (dual raw+processed capture)
-- [ ] `LatencyReport`; `ErrorOccurred` mapping; `IMMNotificationClient` device-change handling
+- [~] `FarEndSource` clocked silence + bounded backlog + transition fade — *partial:* zero-fill on far underrun + far-ring cleared on AEC-enable are in; the monotonic clock, `D ± slack` bounding, and transition fade are still TODO
+- [x] `LevelMeter` (RMS/peak/clip) events — RMS/peak/clip raised via `InputLevel`/`OutputLevel`
+- [x] `RunMicTestAsync` (dual raw+processed capture) — t0-aligned raw + processed WAVs
+- [ ] `LatencyReport`; `ErrorOccurred` mapping (`EngineErrorCode`); `IMMNotificationClient` device-change handling ⬅ **next** (device-disconnect is the biggest remaining robustness gap)
 - **Exit check:** AEC stable when speaker idle; meters move; test capture returns aligned WAVs; unplug handled.
 
 ### Phase 6 — GUI ✅ (mostly) — see [`06-gui-tray.md`](06-gui-tray.md)
@@ -84,6 +85,15 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] Update root `README.md` for the one-app setup; remove stale Task Scheduler/VB-Cable instructions
 - **Exit check:** clean install on a fresh profile yields a working virtual mic with effects, one app, autostart.
 
+### Phase 11 — Discord integration — see [`11-discord-integration.md`](11-discord-integration.md)
+*(only depends on Phase 7's hotkey/tray infra — can start any time after it; independent of Phases 8–10)*
+- [ ] `Discord/DiscordRpcClient.cs` — named-pipe transport, handshake, nonce-matched commands, `VOICE_SETTINGS_UPDATE` subscription, reconnect backoff
+- [ ] One-time setup wizard (user's own Discord app: client ID/secret → `AUTHORIZE` → token exchange → `AUTHENTICATE`); tokens DPAPI-encrypted
+- [ ] "Manage Discord" mode: engine Running → NS/EC/AGC off (+ optional input=virtual mic), engine Stopped → restore remembered state (persisted, crash-safe)
+- [ ] GUI Discord group (live NS/EC/AGC/mute/deafen pills, greyed when unavailable)
+- [ ] Profile hook (`DiscordProfileSettings`, non-fatal apply) + mute/deafen hotkeys
+- **Exit check:** starting the engine flips Discord's processing off automatically (visible in Discord settings); stopping restores it; profile switch applies its Discord block; all soft-fails when Discord is closed.
+
 ---
 
 ## Risk register (carry forward)
@@ -94,6 +104,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 | AEC far-end misalignment when speaker idle | 5 | Clocked silence + bounded backlog (already designed) |
 | Studio Voice GPU cost / NGC access | 9 | Gated, off by default, recording-only |
 | Kernel driver breaks on Windows update | 8/ongoing | Provider seam + VB-Cable fallback |
+| Discord RPC restricted/changed by Discord | 11 | Feature-flagged, soft-fail; app fully functional without it; stable ~8 yrs (Stream Deck depends on it) |
 
 ## Validation (end-to-end, when feature-complete)
 1. Build/run both projects; engine console harness prints device/format lines.
