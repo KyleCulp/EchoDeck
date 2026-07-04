@@ -41,8 +41,8 @@ public sealed class MainForm : Form
     private readonly ComboBox _reference = NewCombo();
     private readonly ComboBox _output = NewCombo();
     private readonly Button _refresh = new() { Text = "↻  Refresh", AutoSize = true };
-    private readonly ToggleSwitch _showDisabled = NewToggle("Show disabled", 10f);
-    private readonly ToggleSwitch _showDisconnected = NewToggle("Show disconnected", 10f);
+    private readonly BoxCheck _showDisabled = new() { Text = "Show disabled" };
+    private readonly BoxCheck _showDisconnected = new() { Text = "Show disconnected" };
 
     private readonly ComboBox _profileCombo = NewCombo();
     private readonly Button _profileSave = new() { Text = "＋  Save as…", AutoSize = true };
@@ -61,7 +61,7 @@ public sealed class MainForm : Form
     private readonly Chip _statusChip = new() { ShowDot = true };
     private readonly Chip _latChip = new() { ShowDot = false };
 
-    private readonly Button _record = new() { Text = "●  Record speech", AutoSize = true, Enabled = false };
+    private readonly Button _record = new() { Text = "●  Record Speech", AutoSize = true, Enabled = false };
     private readonly Button _playIn = new() { Text = "▶  Play", AutoSize = false, Enabled = false };
     private readonly Button _playOut = new() { Text = "▶  Play", AutoSize = false, Enabled = false };
     private readonly Button _save = new() { Text = "⤓  Save recorded samples", AutoSize = true, Enabled = false };
@@ -202,8 +202,8 @@ public sealed class MainForm : Form
         left.Controls.Add(FullWidth(_output));
         StyleFlat(_refresh, Panel, SubText);
         _refresh.Padding = new Padding(14, 8, 14, 8);
-        _showDisabled.ForeColor = SubText; _showDisabled.Margin = new Padding(14, 6, 0, 0);
-        _showDisconnected.ForeColor = SubText; _showDisconnected.Margin = new Padding(10, 6, 0, 0);
+        _showDisabled.ForeColor = SubText; _showDisabled.Font = new Font("Segoe UI", 10.5f); _showDisabled.Margin = new Padding(16, 10, 0, 0);
+        _showDisconnected.ForeColor = SubText; _showDisconnected.Font = new Font("Segoe UI", 10.5f); _showDisconnected.Margin = new Padding(14, 10, 0, 0);
         var devRow = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = false, FlowDirection = FlowDirection.LeftToRight, Margin = new Padding(0, 12, 0, 0), BackColor = Bg };
         devRow.Controls.Add(_refresh);
         devRow.Controls.Add(_showDisabled);
@@ -233,13 +233,12 @@ public sealed class MainForm : Form
         _record.Font = new Font("Segoe UI", 11.5f);
         _record.Margin = new Padding(0);
         StyleFlat(_save, Panel, SubText);
-        _save.AutoSize = false;
-        _save.Size = new Size(44, 44);
-        _save.Text = "⤓";
-        _save.Font = new Font("Segoe UI", 15f);
-        _save.TextAlign = ContentAlignment.MiddleCenter;
+        _save.AutoSize = true;
+        _save.Text = "⤓  Download Audio";
+        _save.Padding = new Padding(20, 10, 20, 10);
+        _save.Font = new Font("Segoe UI", 11.5f);
         _save.Margin = new Padding(12, 0, 0, 0);
-        _tips.SetToolTip(_save, "Save recorded samples");
+        _tips.SetToolTip(_save, "Save the recorded Input & Output as WAV files");
         var testActions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = Bg, Margin = new Padding(0, 12, 0, 0) };
         testActions.Controls.Add(_record);
         testActions.Controls.Add(_save);
@@ -404,10 +403,10 @@ public sealed class MainForm : Form
     private TableLayoutPanel MeterRow(string label, LevelMeter meter)
     {
         var t = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 2, RowCount = 1, Height = 34, Margin = new Padding(0, 8, 0, 8), BackColor = Bg };
-        t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        t.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 78)); // fixed so Input/Output meters are equal length
         t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         t.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-        var lbl = new Label { Text = label, AutoSize = true, ForeColor = TextColor, Anchor = AnchorStyles.Left, Margin = new Padding(0, 0, 18, 0) };
+        var lbl = new Label { Text = label, AutoSize = true, ForeColor = TextColor, Anchor = AnchorStyles.Left, Margin = new Padding(0, 0, 12, 0) };
         meter.Dock = DockStyle.Fill;
         meter.Margin = new Padding(0, 7, 0, 7);
         t.Controls.Add(lbl, 0, 0);
@@ -954,7 +953,7 @@ public sealed class MainForm : Form
         if (!_recording) return;
         _recTimer.Stop();
         _recording = false;
-        _record.Text = "●  Record speech";
+        _record.Text = "●  Record Speech";
 
         TestCaptureResult? r = _engine.StopMicTest();
         if (r != null && r.RawWav.Length > 44)

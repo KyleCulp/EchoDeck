@@ -1,4 +1,5 @@
 using System.Drawing.Drawing2D;
+using System.Runtime.InteropServices;
 
 namespace EchoDeck.App;
 
@@ -159,10 +160,21 @@ public sealed class FlatCombo : ComboBox
 
     protected override void WndProc(ref Message m)
     {
+        if (m.Msg == WM_PAINT)
+        {
+            // Fully owner-paint via BeginPaint/EndPaint so the native combo never draws its
+            // light drop-down button underneath — the whole control is dark.
+            var ps = new PAINTSTRUCT { RgbReserved = new byte[32] };
+            IntPtr hdc = BeginPaint(Handle, ref ps);
+            try { using var g = Graphics.FromHdc(hdc); DrawClosed(g); }
+            finally { EndPaint(Handle, ref ps); }
+            return;
+        }
         base.WndProc(ref m);
-        if (m.Msg != WM_PAINT) return;
+    }
 
-        using var g = Graphics.FromHwnd(Handle);
+    private void DrawClosed(Graphics g)
+    {
         g.SmoothingMode = SmoothingMode.AntiAlias;
         var r = ClientRectangle;
         using (var b = new SolidBrush(FaceColor)) g.FillRectangle(b, r);
@@ -176,6 +188,89 @@ public sealed class FlatCombo : ComboBox
         int ax = r.Width - 24, ay = r.Height / 2;
         using var pen = new Pen(ArrowColor, 1.6f);
         g.DrawLines(pen, new[] { new Point(ax, ay - 3), new Point(ax + 5, ay + 3), new Point(ax + 10, ay - 3) });
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PAINTSTRUCT
+    {
+        public IntPtr Hdc;
+        public int FErase;
+        public RECT RcPaint;
+        public int FRestore;
+        public int FIncUpdate;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)] public byte[] RgbReserved;
+    }
+
+    [DllImport("user32.dll")] private static extern IntPtr BeginPaint(IntPtr hWnd, ref PAINTSTRUCT ps);
+    [DllImport("user32.dll")] private static extern bool EndPaint(IntPtr hWnd, ref PAINTSTRUCT ps);
+}
+
+/// <summary>
+/// A dark box checkbox (square + green check) with a label — for settings-style toggles
+/// like "Show disabled" where a check reads clearer than a pill switch.
+/// </summary>
+public sealed class BoxCheck : Control
+{
+    private const int BoxSize = 18;
+    private bool _checked;
+
+    public event EventHandler? CheckedChanged;
+
+    public Color BoxBg { get; set; } = Color.FromArgb(21, 24, 29);
+    public Color BoxBorder { get; set; } = Color.FromArgb(64, 70, 82);
+    public Color CheckColor { get; set; } = Color.FromArgb(134, 194, 50);
+
+    public BoxCheck()
+    {
+        SetStyle(ControlStyles.AllPaintingInWmPaint
+               | ControlStyles.OptimizedDoubleBuffer
+               | ControlStyles.UserPaint
+               | ControlStyles.ResizeRedraw, true);
+        AutoSize = true;
+        Cursor = Cursors.Hand;
+    }
+
+    public bool Checked
+    {
+        get => _checked;
+        set { if (_checked == value) return; _checked = value; Invalidate(); CheckedChanged?.Invoke(this, EventArgs.Empty); }
+    }
+
+    protected override void OnClick(EventArgs e) { if (Enabled) Checked = !_checked; base.OnClick(e); }
+    protected override void OnTextChanged(EventArgs e) { base.OnTextChanged(e); if (AutoSize) Size = GetPreferredSize(Size.Empty); Invalidate(); }
+    protected override void OnFontChanged(EventArgs e) { base.OnFontChanged(e); if (AutoSize) Size = GetPreferredSize(Size.Empty); Invalidate(); }
+
+    public override Size GetPreferredSize(Size proposedSize)
+    {
+        Size ts = TextRenderer.MeasureText(string.IsNullOrEmpty(Text) ? " " : Text, Font);
+        return new Size(BoxSize + 9 + ts.Width + 2, Math.Max(BoxSize, ts.Height) + 6);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        Graphics g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using (var bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
+
+        int cy = Height / 2;
+        var box = new Rectangle(1, cy - BoxSize / 2, BoxSize, BoxSize);
+        using (var path = RoundRect.Path(box, 4))
+        {
+            using (var b = new SolidBrush(_checked ? CheckColor : BoxBg)) g.FillPath(b, path);
+            using (var p = new Pen(_checked ? CheckColor : BoxBorder)) g.DrawPath(p, path);
+        }
+        if (_checked)
+        {
+            using var cp = new Pen(Color.FromArgb(20, 22, 26), 2f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+            g.DrawLines(cp, new[] { new Point(box.X + 4, cy), new Point(box.X + 7, cy + 4), new Point(box.X + 14, cy - 4) });
+        }
+
+        Color tc = Enabled ? ForeColor : Color.FromArgb(120, 124, 130);
+        Size tsz = TextRenderer.MeasureText(Text, Font);
+        TextRenderer.DrawText(g, Text, Font, new Point(BoxSize + 10, cy - tsz.Height / 2), tc, TextFormatFlags.NoPrefix);
     }
 }
 
