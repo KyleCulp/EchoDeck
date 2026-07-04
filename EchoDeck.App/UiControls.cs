@@ -145,18 +145,11 @@ public sealed class FlatCombo : ComboBox
         ForeColor = ItemText;
     }
 
-    protected override void OnSizeChanged(EventArgs e)
-    {
-        base.OnSizeChanged(e);
-        using var path = RoundRect.Path(new Rectangle(0, 0, Width, Height), Radius);
-        Region = new Region(path);
-    }
-
     protected override void OnFontChanged(EventArgs e)
     {
         base.OnFontChanged(e);
-        // DPI-aware list item height so items never clip the text (was a hardcoded 28px).
-        try { ItemHeight = Font.Height + 14; } catch { /* combo not ready */ }
+        // DPI-aware list item height + generous gap so items breathe (was a hardcoded 28px).
+        try { ItemHeight = Font.Height + 20; } catch { /* combo not ready */ }
     }
 
     protected override void OnDrawItem(DrawItemEventArgs e)
@@ -193,8 +186,7 @@ public sealed class FlatCombo : ComboBox
         g.SmoothingMode = SmoothingMode.AntiAlias;
         var r = ClientRectangle;
         using (var b = new SolidBrush(FaceColor)) g.FillRectangle(b, r);
-        using (var path = RoundRect.Path(new Rectangle(0, 0, r.Width - 1, r.Height - 1), Radius))
-        using (var p = new Pen(BorderColor)) g.DrawPath(p, path);
+        using (var p = new Pen(BorderColor)) g.DrawRectangle(p, 0, 0, r.Width - 1, r.Height - 1);
 
         string text = (SelectedIndex >= 0 ? GetItemText(SelectedItem) : Text) ?? "";
         var tr = new Rectangle(11, 0, Math.Max(0, r.Width - 42), r.Height);
@@ -319,11 +311,8 @@ public sealed class FlatButton : Button
         using (var bg = new SolidBrush(Parent?.BackColor ?? BackColor)) g.FillRectangle(bg, ClientRectangle);
 
         var r = new Rectangle(0, 0, Width - 1, Height - 1);
-        using (var path = RoundRect.Path(r, Radius))
-        {
-            using (var b = new SolidBrush(Face)) g.FillPath(b, path);
-            using (var p = new Pen(Line)) g.DrawPath(p, path);
-        }
+        using (var b = new SolidBrush(Face)) g.FillRectangle(b, r);
+        using (var p = new Pen(Line)) g.DrawRectangle(p, r);
 
         Color tc = Enabled ? ForeColor : DisabledText;
         TextRenderer.DrawText(g, Text, Font, ClientRectangle, tc,
