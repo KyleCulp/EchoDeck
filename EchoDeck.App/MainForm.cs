@@ -402,8 +402,10 @@ public sealed class MainForm : Form
 
     private TableLayoutPanel MeterRow(string label, LevelMeter meter)
     {
+        // Measured (DPI-correct) fixed width from the widest label so both meters are equal AND never clip.
+        int labelW = TextRenderer.MeasureText("Output", Font).Width + 20;
         var t = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 2, RowCount = 1, Height = 34, Margin = new Padding(0, 8, 0, 8), BackColor = Bg };
-        t.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 78)); // fixed so Input/Output meters are equal length
+        t.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, labelW));
         t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         t.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
         var lbl = new Label { Text = label, AutoSize = true, ForeColor = TextColor, Anchor = AnchorStyles.Left, Margin = new Padding(0, 0, 12, 0) };
@@ -1133,6 +1135,22 @@ public sealed class MainForm : Form
         int targetH = Math.Min(contentH, area.Height - 70);
         ClientSize = new Size(ClientSize.Width, Math.Max(MinimumSize.Height, targetH));
         CenterToScreen();
+    }
+
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        if (_root == null) return;
+        // After the first real layout, snap the window to the actual content height so there's
+        // no empty space below (the pre-show GetPreferredSize estimate can be off).
+        int contentH = _root.Height;
+        int maxH = (Screen.FromControl(this)?.WorkingArea.Height ?? 1000) - 70;
+        int target = Math.Clamp(contentH, MinimumSize.Height, maxH);
+        if (Math.Abs(ClientSize.Height - target) > 4)
+        {
+            ClientSize = new Size(ClientSize.Width, target);
+            CenterToScreen();
+        }
     }
 
     protected override void OnHandleCreated(EventArgs e)

@@ -133,6 +133,7 @@ public sealed class FlatCombo : ComboBox
     public Color ArrowColor { get; set; } = Color.FromArgb(139, 146, 156);
     public Color ItemText { get; set; } = Color.FromArgb(231, 233, 236);
     public Color SelColor { get; set; } = Color.FromArgb(45, 62, 20);
+    public int Radius { get; set; } = 8;
 
     public FlatCombo()
     {
@@ -142,6 +143,13 @@ public sealed class FlatCombo : ComboBox
         ItemHeight = 28;
         BackColor = FaceColor;
         ForeColor = ItemText;
+    }
+
+    protected override void OnSizeChanged(EventArgs e)
+    {
+        base.OnSizeChanged(e);
+        using var path = RoundRect.Path(new Rectangle(0, 0, Width, Height), Radius);
+        Region = new Region(path);
     }
 
     protected override void OnDrawItem(DrawItemEventArgs e)
@@ -178,7 +186,8 @@ public sealed class FlatCombo : ComboBox
         g.SmoothingMode = SmoothingMode.AntiAlias;
         var r = ClientRectangle;
         using (var b = new SolidBrush(FaceColor)) g.FillRectangle(b, r);
-        using (var p = new Pen(BorderColor)) g.DrawRectangle(p, 0, 0, r.Width - 1, r.Height - 1);
+        using (var path = RoundRect.Path(new Rectangle(0, 0, r.Width - 1, r.Height - 1), Radius))
+        using (var p = new Pen(BorderColor)) g.DrawPath(p, path);
 
         string text = (SelectedIndex >= 0 ? GetItemText(SelectedItem) : Text) ?? "";
         var tr = new Rectangle(11, 0, Math.Max(0, r.Width - 42), r.Height);
