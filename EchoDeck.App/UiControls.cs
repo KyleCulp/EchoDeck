@@ -152,6 +152,13 @@ public sealed class FlatCombo : ComboBox
         Region = new Region(path);
     }
 
+    protected override void OnFontChanged(EventArgs e)
+    {
+        base.OnFontChanged(e);
+        // DPI-aware list item height so items never clip the text (was a hardcoded 28px).
+        try { ItemHeight = Font.Height + 14; } catch { /* combo not ready */ }
+    }
+
     protected override void OnDrawItem(DrawItemEventArgs e)
     {
         Graphics g = e.Graphics;
@@ -280,6 +287,47 @@ public sealed class BoxCheck : Control
         Color tc = Enabled ? ForeColor : Color.FromArgb(120, 124, 130);
         Size tsz = TextRenderer.MeasureText(Text, Font);
         TextRenderer.DrawText(g, Text, Font, new Point(BoxSize + 10, cy - tsz.Height / 2), tc, TextFormatFlags.NoPrefix);
+    }
+}
+
+/// <summary>
+/// A flat, rounded, owner-drawn button. Unlike a native flat <see cref="Button"/> (whose
+/// disabled text greys to near-black on a dark theme), this keeps a readable colour when
+/// disabled and matches the rounded cards/combos.
+/// </summary>
+public sealed class FlatButton : Button
+{
+    public int Radius { get; set; } = 8;
+    public Color Face { get; set; } = Color.FromArgb(30, 34, 41);
+    public Color Line { get; set; } = Color.FromArgb(43, 48, 58);
+    public Color DisabledText { get; set; } = Color.FromArgb(112, 118, 128);
+
+    public FlatButton()
+    {
+        SetStyle(ControlStyles.AllPaintingInWmPaint
+               | ControlStyles.OptimizedDoubleBuffer
+               | ControlStyles.UserPaint
+               | ControlStyles.ResizeRedraw, true);
+        FlatStyle = FlatStyle.Flat;
+        FlatAppearance.BorderSize = 0;
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        Graphics g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using (var bg = new SolidBrush(Parent?.BackColor ?? BackColor)) g.FillRectangle(bg, ClientRectangle);
+
+        var r = new Rectangle(0, 0, Width - 1, Height - 1);
+        using (var path = RoundRect.Path(r, Radius))
+        {
+            using (var b = new SolidBrush(Face)) g.FillPath(b, path);
+            using (var p = new Pen(Line)) g.DrawPath(p, path);
+        }
+
+        Color tc = Enabled ? ForeColor : DisabledText;
+        TextRenderer.DrawText(g, Text, Font, ClientRectangle, tc,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
     }
 }
 

@@ -40,14 +40,14 @@ public sealed class MainForm : Form
     private readonly ComboBox _mic = NewCombo();
     private readonly ComboBox _reference = NewCombo();
     private readonly ComboBox _output = NewCombo();
-    private readonly Button _refresh = new() { Text = "↻  Refresh", AutoSize = true };
+    private readonly FlatButton _refresh = new() { Text = "↻  Refresh", AutoSize = true };
     private readonly BoxCheck _showDisabled = new() { Text = "Show disabled" };
     private readonly BoxCheck _showDisconnected = new() { Text = "Show disconnected" };
 
     private readonly ComboBox _profileCombo = NewCombo();
-    private readonly Button _profileSave = new() { Text = "＋  Save as…", AutoSize = true };
-    private readonly Button _profileUpdate = new() { Text = "Update", AutoSize = true, Enabled = false };
-    private readonly Button _profileDelete = new() { Text = "Delete", AutoSize = true, Enabled = false };
+    private readonly FlatButton _profileSave = new() { Text = "＋  Save as…", AutoSize = true };
+    private readonly FlatButton _profileUpdate = new() { Text = "Update", AutoSize = true, Enabled = false };
+    private readonly FlatButton _profileDelete = new() { Text = "Delete", AutoSize = true, Enabled = false };
     private bool _suppressProfile;
     private ToolStripMenuItem? _trayProfiles;
 
@@ -61,10 +61,10 @@ public sealed class MainForm : Form
     private readonly Chip _statusChip = new() { ShowDot = true };
     private readonly Chip _latChip = new() { ShowDot = false };
 
-    private readonly Button _record = new() { Text = "●  Record Speech", AutoSize = true, Enabled = false };
-    private readonly Button _playIn = new() { Text = "▶  Play", AutoSize = false, Enabled = false };
-    private readonly Button _playOut = new() { Text = "▶  Play", AutoSize = false, Enabled = false };
-    private readonly Button _save = new() { Text = "⤓  Save recorded samples", AutoSize = true, Enabled = false };
+    private readonly FlatButton _record = new() { Text = "●  Record Speech", AutoSize = true, Enabled = false };
+    private readonly FlatButton _playIn = new() { Text = "▶  Play", AutoSize = false, Enabled = false };
+    private readonly FlatButton _playOut = new() { Text = "▶  Play", AutoSize = false, Enabled = false };
+    private readonly FlatButton _save = new() { Text = "⤓  Save recorded samples", AutoSize = true, Enabled = false };
     private readonly WaveformView _inWave = new() { WaveColor = Color.FromArgb(175, 175, 180), FillBack = Color.FromArgb(26, 26, 28) };
     private readonly WaveformView _outWave = new() { WaveColor = Color.FromArgb(150, 212, 44), FillBack = Color.FromArgb(28, 44, 16) };
     private readonly System.Windows.Forms.Timer _recTimer = new() { Interval = 1000 };
@@ -80,7 +80,7 @@ public sealed class MainForm : Form
     private readonly Label _status = new() { Text = "Stopped", AutoSize = true };
     private readonly BannerLine _sdkLine = new(Inset, TextColor, Faint);
     private readonly BannerLine _cableLine = new(Inset, TextColor, Faint);
-    private readonly Button _vmicButton = new() { AutoSize = true, Visible = false, Text = "Install virtual mic driver…" };
+    private readonly FlatButton _vmicButton = new() { AutoSize = true, Visible = false, Text = "Install virtual mic driver…" };
     private VirtualMicManager _vmic = new(new List<DeviceInfo>(), new List<DeviceInfo>());
     private readonly ToolTip _tips = new();
     private readonly Icon _appIcon = MakeAppIcon();
@@ -463,13 +463,17 @@ public sealed class MainForm : Form
 
     private static void StyleFlat(Button b, Color back, Color fore)
     {
-        b.FlatStyle = FlatStyle.Flat;
-        b.BackColor = back;
         b.ForeColor = fore;
-        b.FlatAppearance.BorderColor = Border;
-        b.UseVisualStyleBackColor = false;
         b.Cursor = Cursors.Hand;
         b.Margin = new Padding(0);
+        if (b is FlatButton fb) { fb.Face = back; fb.Line = Border; }
+        else
+        {
+            b.FlatStyle = FlatStyle.Flat;
+            b.BackColor = back;
+            b.FlatAppearance.BorderColor = Border;
+            b.UseVisualStyleBackColor = false;
+        }
     }
 
     private void UpdateBannerWidths()
@@ -901,10 +905,10 @@ public sealed class MainForm : Form
             Font = new Font("Segoe UI", 10f)
         };
         var tb = new TextBox { Text = current, Left = 16, Top = 24, Width = 328, BackColor = Inset, ForeColor = TextColor, BorderStyle = BorderStyle.FixedSingle };
-        var ok = new Button { Text = "Save", DialogResult = DialogResult.OK, Left = 188, Top = 78, Width = 74, Height = 30 };
-        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Left = 270, Top = 78, Width = 74, Height = 30 };
-        StyleFlat(ok, Accent, Color.Black);
-        StyleFlat(cancel, Panel, TextColor);
+        var ok = new FlatButton { Text = "Save", DialogResult = DialogResult.OK, Left = 180, Top = 78, Width = 82, Height = 32 };
+        var cancel = new FlatButton { Text = "Cancel", DialogResult = DialogResult.Cancel, Left = 270, Top = 78, Width = 82, Height = 32 };
+        StyleFlat(ok, Panel, Accent);
+        StyleFlat(cancel, Panel, SubText);
         f.Controls.Add(new Label { Text = "Name this profile:", AutoSize = true, Left = 16, Top = 4, ForeColor = SubText });
         f.Controls.Add(tb);
         f.Controls.Add(ok);
