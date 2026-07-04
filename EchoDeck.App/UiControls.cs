@@ -150,7 +150,7 @@ public sealed class FlatCombo : ComboBox
         using (var b = new SolidBrush(sel ? SelColor : FaceColor)) g.FillRectangle(b, e.Bounds);
         if (e.Index >= 0)
         {
-            string t = GetItemText(Items[e.Index]);
+            string t = GetItemText(Items[e.Index]) ?? "";
             var r = new Rectangle(e.Bounds.X + 8, e.Bounds.Y, e.Bounds.Width - 10, e.Bounds.Height);
             TextRenderer.DrawText(g, t, Font, r, ItemText,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
@@ -168,7 +168,7 @@ public sealed class FlatCombo : ComboBox
         using (var b = new SolidBrush(FaceColor)) g.FillRectangle(b, r);
         using (var p = new Pen(BorderColor)) g.DrawRectangle(p, 0, 0, r.Width - 1, r.Height - 1);
 
-        string text = SelectedIndex >= 0 ? GetItemText(SelectedItem) : Text;
+        string text = (SelectedIndex >= 0 ? GetItemText(SelectedItem) : Text) ?? "";
         var tr = new Rectangle(11, 0, Math.Max(0, r.Width - 42), r.Height);
         TextRenderer.DrawText(g, text, Font, tr, Enabled ? ItemText : Color.FromArgb(120, 124, 130),
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);

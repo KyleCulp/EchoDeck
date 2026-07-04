@@ -20,6 +20,25 @@ public sealed class EngineConfig
 
     /// <summary>Optional override for the NVIDIA SDK install path.</summary>
     public string? SdkDir { get; set; }
+
+    /// <summary>Saved presets (named device + effect bundles) and the active one.</summary>
+    public List<AudioProfile> Profiles { get; set; } = new();
+    public string? ActiveProfileId { get; set; }
+}
+
+/// <summary>A named preset: which devices + effects EchoDeck uses. Switchable from the GUI/tray/hotkey.</summary>
+public sealed class AudioProfile
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = "";
+    public string? InputDeviceId { get; set; }
+    public string? FarEndDeviceId { get; set; }
+    public string? OutputDeviceId { get; set; }
+    public bool Aec { get; set; } = true;
+    public bool NoiseRemoval { get; set; }
+    public bool RoomEchoRemoval { get; set; }
+
+    public override string ToString() => Name;
 }
 
 /// <summary>Loads/saves <see cref="EngineConfig"/> as JSON in %APPDATA%\EchoDeck.</summary>

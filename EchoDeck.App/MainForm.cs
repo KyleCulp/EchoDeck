@@ -44,6 +44,13 @@ public sealed class MainForm : Form
     private readonly ToggleSwitch _showDisabled = NewToggle("Show disabled", 10f);
     private readonly ToggleSwitch _showDisconnected = NewToggle("Show disconnected", 10f);
 
+    private readonly ComboBox _profileCombo = NewCombo();
+    private readonly Button _profileSave = new() { Text = "＋  Save as…", AutoSize = true };
+    private readonly Button _profileUpdate = new() { Text = "Update", AutoSize = true, Enabled = false };
+    private readonly Button _profileDelete = new() { Text = "Delete", AutoSize = true, Enabled = false };
+    private bool _suppressProfile;
+    private ToolStripMenuItem? _trayProfiles;
+
     private readonly ToggleSwitch _aec = NewToggle("");
     private readonly ToggleSwitch _noise = NewToggle("");
     private readonly ToggleSwitch _echo = NewToggle("");
@@ -155,6 +162,23 @@ public sealed class MainForm : Form
         masterRow.Controls.Add(chips, 2, 0);
         root.Controls.Add(masterRow);
 
+        // PROFILES bar (named device + effect presets)
+        root.Controls.Add(SectionHeader("PROFILES"));
+        StyleFlat(_profileSave, Panel, TextColor); _profileSave.Padding = new Padding(12, 8, 12, 8);
+        StyleFlat(_profileUpdate, Panel, SubText); _profileUpdate.Padding = new Padding(12, 8, 12, 8); _profileUpdate.Margin = new Padding(8, 0, 0, 0);
+        StyleFlat(_profileDelete, Panel, SubText); _profileDelete.Padding = new Padding(12, 8, 12, 8); _profileDelete.Margin = new Padding(8, 0, 0, 0);
+        _profileCombo.Dock = DockStyle.Fill; _profileCombo.Margin = new Padding(0, 0, 8, 0);
+        var profRow = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 4, RowCount = 1, BackColor = Bg, Margin = new Padding(0, 2, 0, 0) };
+        profRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        profRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        profRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        profRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        profRow.Controls.Add(_profileCombo, 0, 0);
+        profRow.Controls.Add(_profileSave, 1, 0);
+        profRow.Controls.Add(_profileUpdate, 2, 0);
+        profRow.Controls.Add(_profileDelete, 3, 0);
+        root.Controls.Add(profRow);
+
         // STATUS card (full width, inset)
         StyleFlat(_vmicButton, Panel, TextColor);
         _vmicButton.Padding = new Padding(12, 6, 12, 6);
@@ -235,8 +259,10 @@ public sealed class MainForm : Form
         UpdateBannerWidths();
 
         _tray = new NotifyIcon { Icon = _appIcon, Text = "EchoDeck", Visible = true };
+        _trayProfiles = new ToolStripMenuItem("Profiles");
         var menu = new ContextMenuStrip();
         menu.Items.Add("Show EchoDeck", null, (_, _) => ShowFromTray());
+        menu.Items.Add(_trayProfiles);
         menu.Items.Add("Pause / resume", null, (_, _) => _power.Checked = !_power.Checked);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => { _reallyExit = true; Close(); });
@@ -342,6 +368,30 @@ public sealed class MainForm : Form
 
     private Panel Separator() => new() { Height = 1, Dock = DockStyle.Top, BackColor = Border, Margin = new Padding(0) };
 
+    /// <summary>A green rounded-square app icon with a small waveform, drawn at runtime.</summary>
+    private static Icon MakeAppIcon()
+    {
+        const int s = 64;
+        using var bmp = new Bitmap(s, s);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.Clear(Color.Transparent);
+            var rect = new Rectangle(6, 6, s - 12, s - 12);
+            using (var path = RoundRect.Path(rect, 14))
+            using (var b = new System.Drawing.Drawing2D.LinearGradientBrush(rect, Color.FromArgb(150, 212, 44), Color.FromArgb(95, 143, 36), 60f))
+                g.FillPath(b, path);
+
+            using var bar = new SolidBrush(Color.FromArgb(24, 27, 32));
+            int[] hs = { 12, 22, 32, 24, 14 };
+            const int bw = 5, gap = 4, cy = s / 2;
+            int bx = (s - (hs.Length * bw + (hs.Length - 1) * gap)) / 2;
+            for (int i = 0; i < hs.Length; i++)
+                g.FillRectangle(bar, bx + i * (bw + gap), cy - hs[i] / 2, bw, hs[i]);
+        }
+        return Icon.FromHandle(bmp.GetHicon());
+    }
+
     private TableLayoutPanel MeterRow(string label, LevelMeter meter)
     {
         var t = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 2, RowCount = 1, Height = 34, Margin = new Padding(0, 8, 0, 8), BackColor = Bg };
@@ -444,6 +494,11 @@ public sealed class MainForm : Form
         _noise.CheckedChanged += (_, _) => { _engine.NoiseRemovalEnabled = _noise.Checked; SaveConfig(); };
         _echo.CheckedChanged += (_, _) => { _engine.RoomEchoRemovalEnabled = _echo.Checked; SaveConfig(); };
 
+        _profileCombo.SelectedIndexChanged += (_, _) => OnProfileSelected();
+        _profileSave.Click += (_, _) => SaveAsProfile();
+        _profileUpdate.Click += (_, _) => UpdateProfile();
+        _profileDelete.Click += (_, _) => DeleteProfile();
+
         _record.Click += (_, _) => ToggleRecord();
         _playIn.Click += (_, _) => Play(_rawWav, "input", _inWave);
         _playOut.Click += (_, _) => Play(_procWav, "output", _outWave);
@@ -515,6 +570,7 @@ public sealed class MainForm : Form
         await RefreshDevicesAsync();
 
         _initializing = false;
+        LoadProfilesCombo();
 
         // Auto-start processing once, on first load (Broadcast-style "always on").
         if (!_autoStarted)
@@ -665,6 +721,187 @@ public sealed class MainForm : Form
         _config.ShowDisabledDevices = _showDisabled.Checked;
         _config.ShowDisconnectedDevices = _showDisconnected.Checked;
         ConfigStore.Save(_config);
+    }
+
+    // ── profiles ─────────────────────────────────────────────────────────────────
+    private void LoadProfilesCombo()
+    {
+        _suppressProfile = true;
+        _profileCombo.Items.Clear();
+        _profileCombo.Items.Add("(No profile)");
+        foreach (AudioProfile p in _config.Profiles) _profileCombo.Items.Add(p);
+
+        int sel = 0;
+        if (_config.ActiveProfileId != null)
+            for (int i = 1; i < _profileCombo.Items.Count; i++)
+                if (((AudioProfile)_profileCombo.Items[i]!).Id == _config.ActiveProfileId) { sel = i; break; }
+        _profileCombo.SelectedIndex = sel;
+        _suppressProfile = false;
+
+        UpdateProfileButtons();
+        RebuildTrayProfiles();
+    }
+
+    private void UpdateProfileButtons()
+    {
+        bool sel = _profileCombo.SelectedItem is AudioProfile;
+        _profileUpdate.Enabled = sel;
+        _profileDelete.Enabled = sel;
+    }
+
+    private void OnProfileSelected()
+    {
+        UpdateProfileButtons();
+        if (_suppressProfile) return;
+        if (_profileCombo.SelectedItem is AudioProfile p) ApplyProfile(p);
+        else { _config.ActiveProfileId = null; SaveConfig(); RebuildTrayProfiles(); }
+    }
+
+    /// <summary>Apply a preset: set devices + effects (suppressing per-change churn), then one live restart.</summary>
+    private void ApplyProfile(AudioProfile p)
+    {
+        _suppressDeviceApply = true;
+        bool wasInit = _initializing;
+        _initializing = true;
+        try
+        {
+            SelectById(_mic, p.InputDeviceId);
+            SelectById(_reference, p.FarEndDeviceId);
+            SelectById(_output, p.OutputDeviceId);
+            if (_aec.Enabled) _aec.Checked = p.Aec;
+            if (_noise.Enabled) _noise.Checked = p.NoiseRemoval;
+            if (_echo.Enabled) _echo.Checked = p.RoomEchoRemoval;
+            _engine.InputDeviceId = SelId(_mic);
+            _engine.FarEndDeviceId = SelId(_reference);
+            _engine.OutputDeviceId = SelId(_output);
+            _engine.AecEnabled = _aec.Checked;
+            _engine.NoiseRemovalEnabled = _noise.Checked;
+            _engine.RoomEchoRemovalEnabled = _echo.Checked;
+        }
+        finally
+        {
+            _initializing = wasInit;
+            _suppressDeviceApply = false;
+        }
+
+        _config.ActiveProfileId = p.Id;
+        SaveConfig();
+        RebuildTrayProfiles();
+        if (_engine.State is EngineState.Running or EngineState.Starting) ApplyDeviceChangeLive();
+        _status.Text = $"Profile: {p.Name}";
+        _status.ForeColor = SubText;
+    }
+
+    private static void SelectById(ComboBox cb, string? id)
+    {
+        if (id == null) return;
+        for (int i = 0; i < cb.Items.Count; i++)
+            if (cb.Items[i] is DeviceInfo d && d.Id == id) { cb.SelectedIndex = i; return; }
+    }
+
+    private AudioProfile CaptureCurrent(string name, string? id = null) => new()
+    {
+        Id = id ?? Guid.NewGuid().ToString("N"),
+        Name = name,
+        InputDeviceId = SelId(_mic),
+        FarEndDeviceId = SelId(_reference),
+        OutputDeviceId = SelId(_output),
+        Aec = _aec.Checked,
+        NoiseRemoval = _noise.Checked,
+        RoomEchoRemoval = _echo.Checked
+    };
+
+    private void SaveAsProfile()
+    {
+        string? name = AskName("");
+        if (name == null) return;
+        AudioProfile p = CaptureCurrent(name);
+        _config.Profiles.Add(p);
+        _config.ActiveProfileId = p.Id;
+        SaveConfig();
+        LoadProfilesCombo();
+        _status.Text = $"Saved profile: {p.Name}";
+        _status.ForeColor = SubText;
+    }
+
+    private void UpdateProfile()
+    {
+        if (_profileCombo.SelectedItem is not AudioProfile p) return;
+        AudioProfile c = CaptureCurrent(p.Name, p.Id);
+        p.InputDeviceId = c.InputDeviceId;
+        p.FarEndDeviceId = c.FarEndDeviceId;
+        p.OutputDeviceId = c.OutputDeviceId;
+        p.Aec = c.Aec;
+        p.NoiseRemoval = c.NoiseRemoval;
+        p.RoomEchoRemoval = c.RoomEchoRemoval;
+        SaveConfig();
+        _status.Text = $"Updated profile: {p.Name}";
+        _status.ForeColor = SubText;
+    }
+
+    private void DeleteProfile()
+    {
+        if (_profileCombo.SelectedItem is not AudioProfile p) return;
+        _config.Profiles.Remove(p);
+        if (_config.ActiveProfileId == p.Id) _config.ActiveProfileId = null;
+        SaveConfig();
+        LoadProfilesCombo();
+        _status.Text = $"Deleted profile: {p.Name}";
+        _status.ForeColor = SubText;
+    }
+
+    private void RebuildTrayProfiles()
+    {
+        if (_trayProfiles == null) return;
+        _trayProfiles.DropDownItems.Clear();
+        if (_config.Profiles.Count == 0)
+        {
+            _trayProfiles.DropDownItems.Add(new ToolStripMenuItem("(none saved)") { Enabled = false });
+            return;
+        }
+        foreach (AudioProfile p in _config.Profiles)
+        {
+            AudioProfile captured = p;
+            var item = new ToolStripMenuItem(p.Name) { Checked = p.Id == _config.ActiveProfileId };
+            item.Click += (_, _) => SelectProfileInCombo(captured);
+            _trayProfiles.DropDownItems.Add(item);
+        }
+    }
+
+    private void SelectProfileInCombo(AudioProfile p)
+    {
+        for (int i = 1; i < _profileCombo.Items.Count; i++)
+            if (((AudioProfile)_profileCombo.Items[i]!).Id == p.Id) { _profileCombo.SelectedIndex = i; return; }
+    }
+
+    /// <summary>Small themed modal for naming a profile. Returns the trimmed name, or null if cancelled/empty.</summary>
+    private string? AskName(string current)
+    {
+        using var f = new Form
+        {
+            Text = "Profile name",
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            StartPosition = FormStartPosition.CenterParent,
+            MaximizeBox = false,
+            MinimizeBox = false,
+            ShowInTaskbar = false,
+            ClientSize = new Size(360, 128),
+            BackColor = Bg,
+            ForeColor = TextColor,
+            Font = new Font("Segoe UI", 10f)
+        };
+        var tb = new TextBox { Text = current, Left = 16, Top = 24, Width = 328, BackColor = Inset, ForeColor = TextColor, BorderStyle = BorderStyle.FixedSingle };
+        var ok = new Button { Text = "Save", DialogResult = DialogResult.OK, Left = 188, Top = 78, Width = 74, Height = 30 };
+        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Left = 270, Top = 78, Width = 74, Height = 30 };
+        StyleFlat(ok, Accent, Color.Black);
+        StyleFlat(cancel, Panel, TextColor);
+        f.Controls.Add(new Label { Text = "Name this profile:", AutoSize = true, Left = 16, Top = 4, ForeColor = SubText });
+        f.Controls.Add(tb);
+        f.Controls.Add(ok);
+        f.Controls.Add(cancel);
+        f.AcceptButton = ok;
+        f.CancelButton = cancel;
+        return f.ShowDialog(this) == DialogResult.OK && tb.Text.Trim().Length > 0 ? tb.Text.Trim() : null;
     }
 
     // ── engine + test ────────────────────────────────────────────────────────────
